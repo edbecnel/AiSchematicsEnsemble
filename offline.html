@@ -287,8 +287,25 @@
             />
           </div>
 
-          <div style="font-weight: 700; margin: 14px 0 8px">
-            Models (optional)
+          <div
+            style="
+              display: flex;
+              align-items: baseline;
+              justify-content: space-between;
+              gap: 12px;
+              font-weight: 700;
+              margin: 14px 0 8px;
+            "
+          >
+            <div>Models (optional)</div>
+            <button
+              type="button"
+              id="keysOpenBtn"
+              title="Open API keys (for generating commands)"
+              style="padding: 8px 10px"
+            >
+              API Keys…
+            </button>
           </div>
           <div class="row">
             <label>OpenAI model</label>
@@ -299,7 +316,7 @@
                 id="openaiKeyBtn"
                 title="Enter OPENAI_API_KEY"
               >
-                ...
+                Keys
               </button>
             </div>
           </div>
@@ -308,7 +325,7 @@
             <div style="display: flex; gap: 8px; align-items: center">
               <input id="grokModel" type="text" value="grok-4" />
               <button type="button" id="xaiKeyBtn" title="Enter XAI_API_KEY">
-                ...
+                Keys
               </button>
             </div>
           </div>
@@ -321,7 +338,7 @@
                 id="geminiKeyBtn"
                 title="Enter GEMINI_API_KEY"
               >
-                ...
+                Keys
               </button>
             </div>
           </div>
@@ -338,7 +355,7 @@
                 id="anthropicKeyBtn"
                 title="Enter ANTHROPIC_API_KEY"
               >
-                ...
+                Keys
               </button>
             </div>
           </div>
@@ -1366,6 +1383,9 @@
         );
 
       // API keys modal
+      const keysOpenBtn = document.getElementById("keysOpenBtn");
+      if (keysOpenBtn)
+        keysOpenBtn.addEventListener("click", () => openKeysModal());
       if (els.openaiKeyBtn)
         els.openaiKeyBtn.addEventListener("click", () =>
           openKeysModal("openai"),
