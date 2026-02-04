@@ -1079,6 +1079,30 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
         return;
       }
 
+      if (method === "GET" && pathname === "/offline-help.html") {
+        const p = path.resolve(cwd, "offline-help.html");
+        const ok = await fs.pathExists(p);
+        if (!ok) {
+          sendText(res, 404, "text/plain; charset=utf-8", "offline-help.html not found");
+          return;
+        }
+        const body = await fs.readFile(p, "utf8");
+        sendText(res, 200, "text/html; charset=utf-8", body);
+        return;
+      }
+
+      if (method === "GET" && pathname === "/cli-help.html") {
+        const p = path.resolve(cwd, "cli-help.html");
+        const ok = await fs.pathExists(p);
+        if (!ok) {
+          sendText(res, 404, "text/plain; charset=utf-8", "cli-help.html not found");
+          return;
+        }
+        const body = await fs.readFile(p, "utf8");
+        sendText(res, 200, "text/html; charset=utf-8", body);
+        return;
+      }
+
       if (method === "GET" && pathname === "/favicon.ico") {
         // Silence default browser favicon requests.
         res.writeHead(204, { "cache-control": "no-store" });
