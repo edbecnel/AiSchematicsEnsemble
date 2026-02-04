@@ -1,0 +1,46 @@
+{
+  "name": "ai-schematics-ensemble",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Multi-LLM fanout + Claude ensembling for circuit recommendations (bedini, babcock, half wave bridge), with SPICE netlist + connectivity diagram + Word report outputs.",
+  "main": "dist/index.js",
+  "bin": {
+    "ai-schematics-ensemble": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "build:watch": "tsc -w -p tsconfig.json",
+    "dev": "node --loader ts-node/esm src/index.ts",
+    "start": "node dist/index.js",
+    "regen:help-html": "node scripts/regen-help-html.mjs",
+    "chat": "node dist/index.js chat",
+    "dev:chat": "node --loader ts-node/esm src/index.ts chat",
+    "ui": "node dist/index.js ui",
+    "ui:watch": "concurrently -n build,ui -c cyan,green \"npm:build:watch\" \"node --watch dist/index.js ui --no-open\"",
+    "dev:ui:watch": "npm run ui:watch",
+    "dev:ui": "node --loader ts-node/esm src/index.ts ui",
+    "run:example": "node dist/index.js run --question examples/question.md --baseline-netlist examples/babcock_baseline.cir"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.71.2",
+    "@google/genai": "^1.37.0",
+    "busboy": "^1.6.0",
+    "chalk": "^5.4.1",
+    "commander": "^12.1.0",
+    "docx": "^9.2.0",
+    "dotenv": "^16.4.5",
+    "execa": "^9.5.1",
+    "fs-extra": "^11.2.0",
+    "openai": "^4.72.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/busboy": "^1.5.4",
+    "@types/fs-extra": "^11.0.4",
+    "@types/node": "^22.10.2",
+    "concurrently": "^9.2.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.7.2"
+  }
+}

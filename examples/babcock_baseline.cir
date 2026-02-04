@@ -1,0 +1,12 @@
+* Babcock-inspired baseline (placeholder example)
+* NOTE: Replace with your real baseline netlist when ready.
+Vbat  VBAT 0 DC 12
+Rlim  VBAT NDRV 0.2
+Lcoil NDRV NCOIL 5m
+Rcoil NCOIL 0 0.4
+Drec  NCOIL VCHG Dfast
+Ccap  VCHG 0 470u
+Rload VCHG 0 10
+.model Dfast D(Is=1n Rs=0.05 Cjo=20p)
+.tran 0 20m 0 1u
+.end

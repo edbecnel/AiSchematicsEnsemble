@@ -1,0 +1,323 @@
+import "dotenv/config";
+import path from "node:path";
+import fs from "fs-extra";
+import chalk from "chalk";
+import { execa } from "execa";
+
+import { makeRunDir } from "./util/runDir.js";
+import { readTextIfExists, writeJson, writeText } from "./util/io.js";
+import { loadImageAsBase64 } from "./util/image.js";
+import { bundleSpiceIncludes } from "./util/spiceIncludes.js";
+import { askOpenAI } from "./providers/openai.js";
+import { askGrok } from "./providers/xai.js";
+import { askGemini } from "./providers/gemini.js";
+import { askClaude } from "./providers/anthropic.js";
+import { buildEnsemblePrompt, parseEnsembleOutputs } from "./ensemble.js";
+import { parseNetlist } from "./netlist/parse.js";
+import { netlistToDot } from "./netlist/graph.js";
+import { writeReportDocx } from "./report/docx.js";
+import type { InputImage, ModelAnswer } from "./types.js";
+
+export type RunBatchOptions = {
+  questionPath: string;
+  baselineNetlistPath?: string;
+  baselineImagePath?: string;
+  bundleIncludes?: boolean;
+  outdir?: string;
+  openaiModel?: string;
+  grokModel?: string;
+  geminiModel?: string;
+  claudeModel?: string;
+  /** If true, may prompt for missing baseline inputs when run in a TTY. */
+  allowPrompts?: boolean;
+};
+
+export type RunBatchResult = {
+  runDir: string;
+  outputs: {
+    reportDocx: string;
+    finalCir: string;
+    finalMd: string;
+    schematicDot: string;
+    schematicPng?: string;
+    baselineCir?: string;
+    baselineOriginalCir?: string;
+    baselineIncludesJson?: string;
+    baselineImage?: string;
+    answersJson: string;
+  };
+};
+
+export type RunBatchLogger = {
+  info: (msg: string) => void;
+  warn: (msg: string) => void;
+  error: (msg: string) => void;
+};
+
+type BaselineNetlist = { text?: string; sourcePath?: string };
+
+async function maybePromptForBaselineNetlist(existingPath?: string): Promise<BaselineNetlist> {
+  if (!process.stdin.isTTY) return {};
+
+  const { createInterface } = await import("node:readline/promises");
+  const { stdin: input, stdout: output } = await import("node:process");
+
+  const rl = createInterface({ input, output });
+  try {
+    const yn = (await rl.question("No baseline netlist provided. Add one now? [y/N]: ")).trim().toLowerCase();
+    if (!(yn === "y" || yn === "yes")) return {};
+
+    const mode = (await rl.question("Provide baseline as (f)ile path or (p)aste? [f/p]: ")).trim().toLowerCase();
+
+    if (mode.startsWith("f")) {
+      const fp = (await rl.question("Path to netlist file (.cir): ")).trim();
+      if (!fp) return {};
+      const ok = await fs.pathExists(fp);
+      if (!ok) return {};
+      const text = await fs.readFile(fp, "utf-8");
+      return { text, sourcePath: fp };
+    }
+
+    console.log(chalk.cyan("Paste SPICE netlist now. End with a line containing only ---END---"));
+    const lines: string[] = [];
+    while (true) {
+      const line = await rl.question("");
+      if (line.trim() === "---END---") break;
+      lines.push(line);
+    }
+    const pasted = lines.join("\n").trim();
+    return pasted ? { text: pasted } : {};
+  } finally {
+    rl.close();
+  }
+}
+
+async function loadBaselineNetlist(pathMaybe?: string, allowPrompts = true): Promise<BaselineNetlist> {
+  if (pathMaybe && pathMaybe.trim()) {
+    const fromFile = await readTextIfExists(pathMaybe);
+    if (fromFile && fromFile.trim()) return { text: fromFile, sourcePath: pathMaybe };
+  }
+  if (!allowPrompts) return {};
+  return maybePromptForBaselineNetlist(pathMaybe);
+}
+
+async function maybePromptForBaselineImage(existingPath?: string): Promise<string | undefined> {
+  if (!process.stdin.isTTY) return undefined;
+
+  const { createInterface } = await import("node:readline/promises");
+  const { stdin: input, stdout: output } = await import("node:process");
+
+  const rl = createInterface({ input, output });
+  try {
+    const yn = (await rl.question("Add a schematic screenshot image? [y/N]: ")).trim().toLowerCase();
+    if (!(yn === "y" || yn === "yes")) return undefined;
+
+    const fp = (await rl.question("Path to image file (.png/.jpg/.jpeg/.webp): ")).trim();
+    if (!fp) return undefined;
+    const ok = await fs.pathExists(fp);
+    if (!ok) return undefined;
+    return fp;
+  } finally {
+    rl.close();
+  }
+}
+
+async function resolveBaselineImage(pathMaybe?: string, allowPrompts = true): Promise<string | undefined> {
+  if (pathMaybe && pathMaybe.trim()) return pathMaybe;
+  if (!allowPrompts) return undefined;
+  return maybePromptForBaselineImage(pathMaybe);
+}
+
+function defaultLogger(): RunBatchLogger {
+  return {
+    info: (m) => console.log(m),
+    warn: (m) => console.warn(m),
+    error: (m) => console.error(m),
+  };
+}
+
+export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = defaultLogger()): Promise<RunBatchResult> {
+  const allowPrompts = opts.allowPrompts ?? true;
+
+  if (!process.env.ANTHROPIC_API_KEY) {
+    logger.warn("Warning: ANTHROPIC_API_KEY not set. Ensemble step will fail.");
+  }
+
+  const question = await readTextIfExists(opts.questionPath);
+  if (!question) throw new Error(`Could not read question file: ${opts.questionPath}`);
+
+  const runDir = await makeRunDir(opts.outdir ?? "runs");
+  await fs.mkdirp(path.join(runDir, "answers"));
+  logger.info(`Run directory: ${runDir}`);
+
+  // Baseline netlist
+  const baselineLoaded = await loadBaselineNetlist(opts.baselineNetlistPath, allowPrompts);
+  let baselineNetlist = baselineLoaded.text;
+  const baselineNetlistSourcePath = baselineLoaded.sourcePath;
+
+  let baselineOriginalCir: string | undefined;
+  let baselineIncludesJson: string | undefined;
+  let baselineCir: string | undefined;
+
+  if (baselineNetlist) {
+    if (opts.bundleIncludes && baselineNetlistSourcePath) {
+      const bundled = await bundleSpiceIncludes({
+        netlistText: baselineNetlist,
+        baselineFilePath: baselineNetlistSourcePath,
+        runDir,
+        includesDirName: "includes",
+      });
+
+      baselineOriginalCir = path.join(runDir, "baseline_original.cir");
+      baselineCir = path.join(runDir, "baseline.cir");
+      baselineIncludesJson = path.join(runDir, "baseline_includes.json");
+
+      await writeText(baselineOriginalCir, baselineNetlist);
+      await writeText(baselineCir, bundled.bundledNetlist);
+      await writeJson(baselineIncludesJson, {
+        copied: bundled.copied.map((c) => ({
+          directive: c.directive,
+          originalSpecifier: c.originalSpecifier,
+          resolvedSourcePath: c.resolvedSourcePath,
+          destPath: c.destPath,
+        })),
+        missing: bundled.missing,
+      });
+
+      if (bundled.missing.length) {
+        logger.warn(`Bundled includes: copied ${bundled.copied.length}, missing ${bundled.missing.length}`);
+      } else {
+        logger.info(`Bundled includes: copied ${bundled.copied.length}`);
+      }
+
+      // Use rewritten netlist for prompts
+      baselineNetlist = bundled.bundledNetlist;
+    } else {
+      if (opts.bundleIncludes && !baselineNetlistSourcePath) {
+        logger.warn("--bundle-includes was set, but the baseline netlist was pasted (no source file path). Skipping bundling.");
+      }
+      baselineCir = path.join(runDir, "baseline.cir");
+      await writeText(baselineCir, baselineNetlist);
+    }
+  }
+
+  // Baseline image
+  const baselineImagePath = await resolveBaselineImage(opts.baselineImagePath, allowPrompts);
+
+  let baselineImage: InputImage | undefined;
+  let baselineImageFilename: string | undefined;
+  let baselineImageSavedPath: string | undefined;
+
+  if (baselineImagePath) {
+    baselineImage = await loadImageAsBase64(baselineImagePath);
+    baselineImageFilename = baselineImage.filename || "baseline_schematic";
+
+    const ext = path.extname(baselineImagePath);
+    baselineImageSavedPath = path.join(runDir, `baseline_schematic${ext}`);
+    await fs.copy(baselineImagePath, baselineImageSavedPath);
+  }
+
+  // Fanout prompt
+  const fanoutPrompt =
+    question.trim() +
+    (baselineNetlist
+      ? `\n\nBASELINE NETLIST (current topology):\n\n\`\`\`spice\n${baselineNetlist.trim()}\n\`\`\`\n`
+      : "") +
+    (baselineImageFilename ? "\n\nNOTE: A schematic screenshot image is provided as context.\n" : "");
+
+  // Fanout
+  logger.info("Querying models...");
+  const answers = await Promise.all<ModelAnswer>([
+    askOpenAI(fanoutPrompt, opts.openaiModel ?? "gpt-5.2", baselineImage),
+    askGrok(fanoutPrompt, opts.grokModel ?? "grok-4", baselineImage),
+    askGemini(fanoutPrompt, opts.geminiModel ?? "gemini-2.5-flash", baselineImage),
+    askClaude(fanoutPrompt, opts.claudeModel ?? "claude-sonnet-4-5-20250929", 1200, baselineImage),
+  ]);
+
+  const answersJson = path.join(runDir, "answers.json");
+  await writeJson(answersJson, answers);
+
+  for (const a of answers) {
+    const safeModel = a.model.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const fname = `${a.provider}_${safeModel}.md`;
+    const body = a.error ? `# ERROR\n\n${a.error}` : a.text;
+    await writeText(path.join(runDir, "answers", fname), `# ${a.provider} | ${a.model}\n\n${body}\n`);
+  }
+
+  // Ensemble
+  logger.info("Ensembling with Claude...");
+  const ensemblePrompt = buildEnsemblePrompt({
+    question,
+    baselineNetlist,
+    baselineImageFilename: baselineImageFilename ? path.basename(baselineImageSavedPath ?? baselineImageFilename) : undefined,
+    answers,
+  });
+
+  const ensemble = await askClaude(ensemblePrompt, opts.claudeModel ?? "claude-sonnet-4-5-20250929", 2400, baselineImage);
+  await writeText(path.join(runDir, "ensemble_raw.txt"), ensemble.text || ensemble.error || "");
+
+  if (ensemble.error || !ensemble.text) {
+    throw new Error(`Ensemble failed: ${ensemble.error ?? "No text returned"}`);
+  }
+
+  const out = parseEnsembleOutputs(ensemble.text);
+  const finalMd = path.join(runDir, "final.md");
+  const finalCir = path.join(runDir, "final.cir");
+  const finalJson = path.join(runDir, "final.json");
+
+  await writeText(finalMd, out.finalMarkdown);
+  await writeText(finalCir, out.spiceNetlist);
+  await writeText(finalJson, out.circuitJson);
+
+  // Connectivity diagram
+  logger.info("Generating connectivity diagram...");
+  let schematicPng: string | undefined;
+  const schematicDot = path.join(runDir, "schematic.dot");
+  try {
+    const comps = parseNetlist(out.spiceNetlist);
+    const dot = netlistToDot(comps);
+    await writeText(schematicDot, dot);
+
+    const pngPath = path.join(runDir, "schematic.png");
+    try {
+      await execa("dot", ["-Tpng", schematicDot, "-o", pngPath]);
+      schematicPng = pngPath;
+      logger.info("Rendered schematic.png via Graphviz.");
+    } catch {
+      logger.warn("Graphviz 'dot' not found; wrote schematic.dot only.");
+    }
+  } catch (e: any) {
+    logger.warn(`Schematic generation skipped: ${String(e?.message ?? e)}`);
+  }
+
+  // Word report
+  logger.info("Writing report.docx...");
+  const reportDocx = path.join(runDir, "report.docx");
+  await writeReportDocx({
+    outPath: reportDocx,
+    title: "bedini, babcock, half wave bridge — Ensemble Report",
+    question,
+    finalMarkdown: out.finalMarkdown,
+    spiceNetlist: out.spiceNetlist,
+    baselineSchematicPath: baselineImageSavedPath,
+    connectivitySchematicPngPath: schematicPng,
+  });
+
+  logger.info("Done.");
+
+  return {
+    runDir,
+    outputs: {
+      reportDocx,
+      finalCir,
+      finalMd,
+      schematicDot,
+      schematicPng,
+      baselineCir,
+      baselineOriginalCir,
+      baselineIncludesJson,
+      baselineImage: baselineImageSavedPath,
+      answersJson,
+    },
+  };
+}

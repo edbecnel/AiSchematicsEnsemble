@@ -1,0 +1,902 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>AiSchematicsEnsemble — Help</title>
+    <style>
+      :root {
+        --bg: #0b1020;
+        --panel: #0f1730;
+        --text: #e6e9f2;
+        --muted: #aab3c7;
+        --link: #7db4ff;
+        --code-bg: #0a0f1e;
+        --border: rgba(255, 255, 255, 0.08);
+        --shadow: rgba(0, 0, 0, 0.35);
+      }
+      @media (prefers-color-scheme: light) {
+        :root {
+          --bg: #f7f8fb;
+          --panel: #ffffff;
+          --text: #10152a;
+          --muted: #4b5568;
+          --link: #175fe6;
+          --code-bg: #f2f4f8;
+          --border: rgba(0, 0, 0, 0.1);
+          --shadow: rgba(0, 0, 0, 0.08);
+        }
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+      body {
+        margin: 0;
+        font:
+          16px/1.55 system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Helvetica,
+          Arial,
+          "Apple Color Emoji",
+          "Segoe UI Emoji";
+        color: var(--text);
+        background:
+          radial-gradient(
+            1200px 800px at 10% 0%,
+            rgba(125, 180, 255, 0.2),
+            transparent 60%
+          ),
+          radial-gradient(
+            1000px 700px at 90% 10%,
+            rgba(157, 120, 255, 0.18),
+            transparent 60%
+          ),
+          var(--bg);
+      }
+
+      a {
+        color: var(--link);
+        text-decoration: none;
+      }
+      a:hover {
+        text-decoration: underline;
+      }
+
+      .shell {
+        display: grid;
+        grid-template-columns: 320px minmax(0, 1fr);
+        gap: 16px;
+        max-width: 1200px;
+        margin: 28px auto;
+        padding: 0 16px;
+      }
+
+      @media (max-width: 980px) {
+        .shell {
+          grid-template-columns: 1fr;
+        }
+        .toc {
+          position: static !important;
+          max-height: none !important;
+        }
+      }
+
+      .toc,
+      .content {
+        background: var(--panel);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        box-shadow: 0 10px 24px var(--shadow);
+      }
+
+      .toc {
+        position: sticky;
+        top: 16px;
+        max-height: calc(100vh - 32px);
+        overflow: auto;
+        padding: 16px 16px 10px;
+      }
+
+      .toc h2 {
+        margin: 0 0 10px;
+        font-size: 14px;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: var(--muted);
+      }
+
+      .toc .meta {
+        margin: 0 0 12px;
+        font-size: 13px;
+        color: var(--muted);
+      }
+
+      .toc a {
+        display: block;
+        padding: 6px 10px;
+        border-radius: 10px;
+        color: var(--text);
+        opacity: 0.9;
+      }
+
+      .toc a:hover {
+        background: rgba(125, 180, 255, 0.1);
+        text-decoration: none;
+      }
+
+      .toc .lvl-1 {
+        padding-left: 10px;
+        font-weight: 650;
+      }
+      .toc .lvl-2 {
+        padding-left: 18px;
+      }
+      .toc .lvl-3 {
+        padding-left: 26px;
+        font-size: 14px;
+        opacity: 0.92;
+      }
+
+      .content {
+        padding: 22px 22px 28px;
+        overflow: hidden;
+      }
+
+      h1 {
+        font-size: 30px;
+        margin: 0 0 10px;
+      }
+      h2 {
+        font-size: 22px;
+        margin: 22px 0 8px;
+      }
+      h3 {
+        font-size: 18px;
+        margin: 18px 0 8px;
+      }
+
+      p {
+        margin: 10px 0;
+      }
+      hr {
+        border: none;
+        height: 1px;
+        background: var(--border);
+        margin: 18px 0;
+      }
+
+      ul,
+      ol {
+        margin: 10px 0 10px 22px;
+      }
+      li {
+        margin: 4px 0;
+      }
+
+      code {
+        font-family:
+          ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+          "Liberation Mono", "Courier New", monospace;
+        font-size: 0.95em;
+        background: rgba(125, 180, 255, 0.1);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 2px 6px;
+      }
+
+      pre {
+        margin: 12px 0;
+        background: var(--code-bg);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 12px 12px;
+        overflow: auto;
+      }
+
+      pre code {
+        background: transparent;
+        border: none;
+        padding: 0;
+        display: block;
+        white-space: pre;
+      }
+
+      .codeHeader {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin: 10px 0 6px;
+        color: var(--muted);
+        font-size: 12px;
+        letter-spacing: 0.02em;
+      }
+
+      .copyBtn {
+        border: 1px solid var(--border);
+        background: transparent;
+        color: var(--muted);
+        padding: 4px 8px;
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      .copyBtn:hover {
+        background: rgba(125, 180, 255, 0.1);
+        color: var(--text);
+      }
+
+      .notice {
+        margin-top: 14px;
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(125, 180, 255, 0.08);
+        color: var(--muted);
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside class="toc" aria-label="Table of contents">
+        <h2>Contents</h2>
+        <p class="meta">Generated from <strong>Help.md</strong></p>
+        <nav id="toc"></nav>
+        <div class="notice">
+          Tip: open this file directly in your browser.<br />
+          To keep it updated after editing Help.md, run:
+          <code>npm run regen:help-html</code>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div id="render"></div>
+      </main>
+    </div>
+
+    <!-- Embedded markdown source (from Help.md) -->
+    <textarea id="help-md" style="display: none">
+# AiSchematicsEnsemble — End-user Help
+
+This document is for using the tool (inputs/outputs + interactive usage). For developer notes, see README.
+
+For a more readable, browser-friendly version, open help.html.
+
+If you edit Help.md, refresh help.html with:
+
+```powershell
+npm run regen:help-html
+```
+
+## What you need
+
+- Node.js 18+ recommended
+- API keys for one or more providers in a `.env` file
+- Optional: Graphviz (`dot`) if you want `schematic.png` auto-rendered
+
+## Where to run commands
+
+Run commands from the **project root folder** (the directory that contains `package.json`).
+
+PowerShell:
+
+```powershell
+cd "D:\Dev\RPG Ensemble\RpgEnsemble\AiSchematicsEnsemble"
+```
+
+Command Prompt (cmd):
+
+```bat
+cd /d "D:\Dev\RPG Ensemble\RpgEnsemble\AiSchematicsEnsemble"
+```
+
+## Do I need Windows PowerShell?
+
+No. You can run this from Windows **PowerShell** (including Windows Terminal) or **Command Prompt** (`cmd.exe`).
+
+Interactive features (the baseline prompts and `chat`) require a real interactive terminal (TTY).
+
+### 1) Install
+
+PowerShell:
+
+```powershell
+npm install
+npm run build
+```
+
+Command Prompt (cmd):
+
+```bat
+npm install
+npm run build
+```
+
+### 2) Configure API keys
+
+Copy the example env file:
+
+PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Command Prompt (cmd):
+
+```bat
+copy .env.example .env
+```
+
+Edit `.env` and set whichever keys you plan to use:
+
+- `OPENAI_API_KEY=`
+- `ANTHROPIC_API_KEY=`
+- `GEMINI_API_KEY=`
+- `XAI_API_KEY=`
+
+Notes:
+
+- If a provider’s key is missing, calls to that provider will fail.
+- The **ensemble** step uses Claude (Anthropic). If `ANTHROPIC_API_KEY` is not set, ensembling will fail.
+
+## Ways to use AiSchematicsEnsemble
+
+1. **UI (local web page)** (`ui`) — a browser form to configure and run batch mode, with save/load of configs.
+2. **Batch mode** (`run`) — you provide a `question.md` file, it generates a run folder with outputs.
+3. **Interactive mode** (`chat`) — a REPL where you can ask follow-up questions and update context.
+
+---
+
+## UI mode: `ui`
+
+PowerShell:
+
+```powershell
+npm run build
+npm run ui
+```
+
+Dev/watch mode (auto rebuild + auto restart while you edit code):
+
+```powershell
+npm run ui:watch
+```
+
+Command Prompt (cmd):
+
+```bat
+npm run build
+npm run ui
+```
+
+Notes:
+
+- The UI is local-only and runs on your machine.
+- If you edit TypeScript/HTML in `src/`, you must rebuild/restart the UI (or use `npm run ui:watch`).
+- File paths you type into the UI are resolved by the server process, relative to the server’s current working directory.
+- The UI can download `final.md`, `final.cir`, and `report.docx`, and can open the run folder in Explorer.
+
+## Offline mode (no server)
+
+Open offline.html directly in your browser. It does not run the tool; it helps you:
+
+- Fill out inputs/models
+- Download a config JSON
+- Copy a ready-to-paste command line for PowerShell or cmd.exe
+
+Then run the saved JSON config with:
+
+```powershell
+npm run build
+node dist/index.js run --config ai-schematics.config.json
+```
+
+## How to test: offline (no server) vs UI (server)
+
+### Test “offline / no server”
+
+This uses the CLI directly. No web server is running.
+
+1. Build:
+
+```powershell
+npm run build
+```
+
+2. Either:
+
+- Use the offline helper page: open offline.html in a browser, fill the form, download a config JSON, then paste the generated command into PowerShell/cmd.
+
+OR
+
+- Use the example config:
+
+```powershell
+node dist/index.js run --config ai-schematics.config.example.json --outdir runs_test_offline --no-prompts
+```
+
+3. Verify outputs:
+
+- A new folder is created under `runs_test_offline/` (or under `runs/` if you didn’t pass `--outdir`).
+- Confirm you got `final.md`, `final.cir`, and `report.docx`.
+
+### Test “UI / server mode”
+
+This starts a local HTTP server and serves a web page.
+
+1. Build and start UI:
+
+```powershell
+npm run build
+npm run ui
+```
+
+2. Open the printed URL (usually `http://127.0.0.1:3212/`).
+
+3. In the UI:
+
+- Fill inputs and click Run, or import a config JSON.
+- Use the “Copy/paste commands” section if you want to run the exact same config in a terminal instead.
+
+4. Verify outputs:
+
+- The UI should show the run folder and allow downloading `final.md`, `final.cir`, and `report.docx`.
+
+### What’s the difference?
+
+- Offline.html is just a helper page (no server). The actual run is always executed by the CLI (`node dist/index.js run ...`).
+- UI mode adds convenience (form + saving + downloads) but still calls the same underlying runner.
+
+Tip: if the CLI ever asks you to add a baseline netlist or schematic screenshot and you want a fully non-interactive run, add `--no-prompts`.
+
+---
+
+## Batch mode: `run`
+
+### Required input
+
+- `question.md` (or any `.md`/`.txt` file): your question/prompt.
+
+A typical `question.md` looks like:
+
+```markdown
+# Goal
+
+Explain what circuit you’re working on and what you want.
+
+## Constraints
+
+- Supply voltage/current limits
+- Components you have on hand
+- Measurement tools available
+
+## Questions
+
+- What should I change?
+- What should I measure?
+```
+
+### Optional inputs (highly recommended)
+
+You can provide either or both:
+
+- `--baseline-netlist <path>`: a SPICE `.cir` file representing the current topology
+- `--baseline-image <path>`: a schematic screenshot/photo (`.png/.jpg/.jpeg/.webp`)
+
+If you omit either one **and you’re running interactively**, the CLI will prompt you to add them.
+
+### Optional: bundle `.include` / `.lib` dependencies
+
+If your baseline netlist references other files (e.g. `.include some.lib` or `.lib models.lib`), you can ask the tool to copy those dependency files into the run folder:
+
+```powershell
+node dist/index.js run --question question.md --baseline-netlist baseline.cir --bundle-includes
+```
+
+What it does:
+
+- Copies referenced include/lib files into `runs/.../includes/`
+- Writes `baseline_original.cir` (original)
+- Writes `baseline.cir` rewritten to reference `includes/...`
+- Writes `baseline_includes.json` listing copied and missing files
+
+Limitations:
+
+- This only works when the baseline is loaded from a **file path** (`--baseline-netlist ...` or choosing “file” in the prompt). If you paste a netlist, there is no source folder to resolve includes from.
+- This does not simulate SPICE; it’s just bundling files for portability.
+
+### Command
+
+```powershell
+node dist/index.js run --question path/to/question.md
+```
+
+With optional context:
+
+```powershell
+node dist/index.js run --question question.md --baseline-netlist baseline.cir --baseline-image schematic.png
+```
+
+### Path rules (baseline files)
+
+- Paths you pass on the command line (like `--baseline-netlist baseline.cir` or `--baseline-image schematic.png`) are resolved **relative to the folder you run the command from** (your current working directory), unless you use an absolute path.
+- For reliability, either:
+  - run commands from the project root (recommended), and keep paths relative to that, or
+  - use absolute paths.
+
+### What about `.include` files referenced by the baseline `.cir`?
+
+- This tool does **not** run SPICE on your baseline netlist. The baseline `.cir` is used as **context text** for the models, and is optionally saved into the run folder.
+- `.include` directives in the baseline `.cir` are **not** followed/loaded by this tool.
+- The connectivity diagram is generated from the **final** netlist the tool outputs (`final.cir`), and directives (including `.include`) are ignored by the simple connectivity parser.
+
+If you later simulate with a SPICE tool (e.g., ngspice), include-file resolution depends on that simulator; use absolute paths or make include paths relative to the simulator’s working directory.
+
+### Outputs
+
+Each run creates a timestamped folder under `runs/` (or `--outdir`). Typical contents:
+
+- `report.docx` — a Word report including the final writeup
+- `final.md` — final recommendation + test plan
+- `final.cir` — SPICE netlist
+- `final.json` — structured JSON (assumptions/probes/bom/notes)
+- `answers.json` — raw responses from each provider
+- `answers/*.md` — raw responses as Markdown
+- `schematic.dot` — connectivity diagram (Graphviz)
+- `schematic.png` — rendered diagram (only if Graphviz `dot` is installed)
+- `baseline.cir` — saved baseline netlist (if provided)
+- `baseline_schematic.*` — saved image (if provided)
+
+### Model selection
+
+Defaults (override with flags):
+
+- `--openai-model` (default `gpt-5.2`)
+- `--grok-model` (default `grok-4`)
+- `--gemini-model` (default `gemini-2.5-flash`)
+- `--claude-model` (default `claude-sonnet-4-5-20250929`)
+
+Example:
+
+```powershell
+node dist/index.js run --question question.md --openai-model gpt-5.2 --claude-model claude-sonnet-4-5-20250929
+```
+
+---
+
+## Interactive mode: `chat`
+
+### Start chat
+
+```powershell
+npm run chat
+```
+
+Or without building:
+
+```powershell
+npm run dev:chat
+```
+
+### Useful flags
+
+Save a transcript and artifacts:
+
+```powershell
+node dist/index.js chat --save
+```
+
+Start with a baseline netlist/image already loaded:
+
+```powershell
+node dist/index.js chat --baseline-netlist baseline.cir --baseline-image schematic.png --save
+```
+
+Pick a provider:
+
+```powershell
+node dist/index.js chat --provider openai
+node dist/index.js chat --provider ensemble
+```
+
+### Providers
+
+`--provider` can be one of:
+
+- `openai`
+- `xai`
+- `google`
+- `anthropic`
+- `ensemble` (fanout to multiple models, then Claude ensembles the result)
+
+### Chat commands
+
+In the REPL, type `/help` to see the latest commands. Common ones:
+
+- `/provider <name>` — switch provider (`openai|xai|google|anthropic|ensemble`)
+- `/model <name>` — change model for the current provider
+- `/paste` — enter a multi-line message (end with a line `---END---`)
+- `/status` — show current provider/model + whether baseline netlist/image is set
+- `/reset` — clear conversation history
+- `/exit` or `/quit` — exit the REPL
+
+#### Update context during chat
+
+Baseline netlist commands:
+
+- `/netlist file <path>` — load netlist from file
+- `/netlist paste` — paste a multi-line netlist (end `---END---`)
+- `/netlist show` — print the current baseline netlist
+- `/netlist clear` — clear the baseline netlist
+
+Baseline image commands:
+
+- `/image <path>` — set/update baseline schematic image
+- `/image clear` — clear it
+
+### Saving transcripts
+
+If you start chat with `--save` (or run `/save` inside chat), a run folder is created under `runs/` containing:
+
+- `chat.md` — readable transcript
+- `chat.json` — structured transcript
+
+If you use provider `ensemble`, each turn also writes per-turn artifacts under `turns/` (fanout and ensemble outputs).
+
+---
+
+## Troubleshooting
+
+### “Graphviz 'dot' not found”
+
+That’s expected if Graphviz isn’t installed. You will still get `schematic.dot`. Install Graphviz and ensure `dot` is on your PATH to also get `schematic.png`.
+
+### Provider errors / empty responses
+
+- Check you set the correct API key in `.env`
+- Ensure your network allows outbound calls
+- Try switching provider or model
+
+### I want to automate runs
+
+Use batch mode and commit your `question.md` (and optional `baseline.cir`) alongside your project so runs are reproducible.
+</textarea
+    >
+
+    <script>
+      function escapeHtml(s) {
+        return s
+          .replaceAll("&", "&amp;")
+          .replaceAll("<", "&lt;")
+          .replaceAll(">", "&gt;")
+          .replaceAll('"', "&quot;")
+          .replaceAll("'", "&#39;");
+      }
+
+      function formatEmphasisOnEscaped(escaped) {
+        // Apply emphasis AFTER HTML escaping so we don't introduce XSS.
+        // This intentionally stays simple (good enough for Help.md).
+        let s = escaped;
+        s = s.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+        s = s.replace(/\*([^*]+)\*/g, "<em>$1</em>");
+        return s;
+      }
+
+      function inlineFormatRaw(raw) {
+        // Parse inline code blocks (`...`) without double-escaping.
+        // Non-code text is escaped once, then emphasis is applied.
+        let out = "";
+        let i = 0;
+        while (i < raw.length) {
+          const j = raw.indexOf("`", i);
+          if (j === -1) {
+            out += formatEmphasisOnEscaped(escapeHtml(raw.slice(i)));
+            break;
+          }
+          const k = raw.indexOf("`", j + 1);
+          if (k === -1) {
+            out += formatEmphasisOnEscaped(escapeHtml(raw.slice(i)));
+            break;
+          }
+
+          out += formatEmphasisOnEscaped(escapeHtml(raw.slice(i, j)));
+          const code = raw.slice(j + 1, k);
+          out += `<code>${escapeHtml(code)}</code>`;
+          i = k + 1;
+        }
+        return out;
+      }
+
+      function slugify(text) {
+        return text
+          .toLowerCase()
+          .replace(/[^a-z0-9\s-]/g, "")
+          .trim()
+          .replace(/\s+/g, "-")
+          .replace(/-+/g, "-");
+      }
+
+      function renderMarkdown(md) {
+        const lines = md.replace(/\r\n/g, "\n").split("\n");
+        let html = "";
+        let inCode = false;
+        let codeLang = "";
+        let codeBuf = [];
+        let inUl = false;
+        let inOl = false;
+        let paraBuf = [];
+        const headings = [];
+        const usedIds = new Map();
+
+        function flushPara() {
+          if (!paraBuf.length) return;
+          const text = paraBuf.join(" ").trim();
+          if (text) html += `<p>${inlineFormatRaw(text)}</p>`;
+          paraBuf = [];
+        }
+
+        function closeLists() {
+          if (inUl) {
+            html += "</ul>";
+            inUl = false;
+          }
+          if (inOl) {
+            html += "</ol>";
+            inOl = false;
+          }
+        }
+
+        function uniqueId(base) {
+          let id = base || "section";
+          const n = usedIds.get(id) || 0;
+          usedIds.set(id, n + 1);
+          if (n === 0) return id;
+          return `${id}-${n + 1}`;
+        }
+
+        function flushCode() {
+          const code = codeBuf.join("\n");
+          const lang = codeLang || "code";
+          const id = `code-${Math.random().toString(36).slice(2, 8)}`;
+          html += `<div class="codeHeader"><span>${escapeHtml(lang)}</span><button class="copyBtn" data-copy="${id}">Copy</button></div>`;
+          html += `<pre><code id="${id}">${escapeHtml(code)}</code></pre>`;
+          codeBuf = [];
+          codeLang = "";
+        }
+
+        for (let i = 0; i < lines.length; i++) {
+          const raw = lines[i];
+          const line = raw;
+
+          const fence = line.match(/^```\s*([\w-]+)?\s*$/);
+          if (fence) {
+            if (!inCode) {
+              flushPara();
+              closeLists();
+              inCode = true;
+              codeLang = fence[1] || "";
+              continue;
+            } else {
+              inCode = false;
+              flushCode();
+              continue;
+            }
+          }
+
+          if (inCode) {
+            codeBuf.push(raw);
+            continue;
+          }
+
+          // horizontal rule
+          if (/^---\s*$/.test(line.trim())) {
+            flushPara();
+            closeLists();
+            html += "<hr />";
+            continue;
+          }
+
+          // headings
+          const h = line.match(/^(#{1,3})\s+(.*)$/);
+          if (h) {
+            flushPara();
+            closeLists();
+            const level = h[1].length;
+            const text = h[2].trim();
+            const base = slugify(text);
+            const id = uniqueId(base);
+            headings.push({ level, text, id });
+            html += `<h${level} id="${id}">${inlineFormatRaw(text)}</h${level}>`;
+            continue;
+          }
+
+          // unordered list item
+          const ul = line.match(/^\s*-\s+(.*)$/);
+          if (ul) {
+            flushPara();
+            if (inOl) {
+              html += "</ol>";
+              inOl = false;
+            }
+            if (!inUl) {
+              html += "<ul>";
+              inUl = true;
+            }
+            html += `<li>${inlineFormatRaw(ul[1].trim())}</li>`;
+            continue;
+          }
+
+          // ordered list item (1. 2. etc)
+          const ol = line.match(/^\s*(\d+)\.\s+(.*)$/);
+          if (ol) {
+            flushPara();
+            if (inUl) {
+              html += "</ul>";
+              inUl = false;
+            }
+            if (!inOl) {
+              html += "<ol>";
+              inOl = true;
+            }
+            html += `<li>${inlineFormatRaw(ol[2].trim())}</li>`;
+            continue;
+          }
+
+          if (line.trim() === "") {
+            flushPara();
+            closeLists();
+            continue;
+          }
+
+          // paragraph line
+          paraBuf.push(line.trim());
+        }
+
+        flushPara();
+        closeLists();
+        if (inCode) flushCode();
+
+        return { html, headings };
+      }
+
+      const md = document.getElementById("help-md").value;
+      const { html, headings } = renderMarkdown(md);
+      document.getElementById("render").innerHTML = html;
+
+      // Build TOC
+      const toc = document.getElementById("toc");
+      const frag = document.createDocumentFragment();
+      headings
+        .filter((h) => h.level <= 3)
+        .forEach((h) => {
+          const a = document.createElement("a");
+          a.href = `#${h.id}`;
+          a.className = `lvl-${h.level}`;
+          a.textContent = h.text;
+          frag.appendChild(a);
+        });
+      toc.appendChild(frag);
+
+      // Copy buttons
+      document.addEventListener("click", async (e) => {
+        const btn = e.target.closest(".copyBtn");
+        if (!btn) return;
+        const id = btn.getAttribute("data-copy");
+        const el = document.getElementById(id);
+        if (!el) return;
+        const text = el.textContent;
+        try {
+          await navigator.clipboard.writeText(text);
+          const old = btn.textContent;
+          btn.textContent = "Copied";
+          setTimeout(() => (btn.textContent = old), 900);
+        } catch {
+          // ignore
+        }
+      });
+    </script>
+  </body>
+</html>

@@ -1,0 +1,11 @@
+{
+  "questionPath": "examples/question.md",
+  "baselineNetlistPath": "examples/babcock_baseline.cir",
+  "baselineImagePath": "",
+  "bundleIncludes": false,
+  "outdir": "runs",
+  "openaiModel": "gpt-5.2",
+  "grokModel": "grok-4",
+  "geminiModel": "gemini-2.5-flash",
+  "claudeModel": "claude-sonnet-4-5-20250929"
+}
