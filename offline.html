@@ -151,9 +151,7 @@
             justify-content: flex-end;
           "
         >
-          <a class="hint" id="helpLink" href="/help.html" style="display: none"
-            >Help</a
-          >
+          <a class="hint" id="helpLink" href="offline-help.html">Offline help</a>
           <span class="hint" id="offlineHint"
             >Open this file directly (no server)</span
           >
@@ -1350,7 +1348,6 @@
 
       // Header links: show help when served by the UI server.
       if (IS_SERVER) {
-        if (headerEls.helpLink) headerEls.helpLink.style.display = "inline";
         if (headerEls.offlineHint)
           headerEls.offlineHint.textContent =
             "Offline config (served by local UI server)";
