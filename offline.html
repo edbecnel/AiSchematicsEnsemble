@@ -516,6 +516,19 @@
           </button>
           <button
             type="button"
+            id="keysBrowseEnvFileBtn"
+            title="Load keys from a local .env file on your computer"
+          >
+            Browse… .env
+          </button>
+          <input
+            id="keysEnvFileInput"
+            type="file"
+            accept=".env,text/plain"
+            style="display: none"
+          />
+          <button
+            type="button"
             id="keysLoadEnvBtn"
             style="display: none"
             title="Loads keys from the project's .env via the local UI server"
@@ -581,6 +594,8 @@
         modal: document.getElementById("keysModal"),
         closeBtn: document.getElementById("keysCloseBtn"),
         saveBtn: document.getElementById("keysSaveBtn"),
+        browseEnvFileBtn: document.getElementById("keysBrowseEnvFileBtn"),
+        envFileInput: document.getElementById("keysEnvFileInput"),
         loadEnvBtn: document.getElementById("keysLoadEnvBtn"),
         clearBtn: document.getElementById("keysClearBtn"),
         status: document.getElementById("keysStatus"),
@@ -852,7 +867,7 @@
             setKeysStatus(
               IS_SERVER
                 ? "No keys saved in browser. Use 'Load from .env' or paste keys."
-                : "No keys saved in browser. Paste keys then click 'Save to browser'.",
+                : "No keys saved in browser. Paste keys, or use 'Browse .env', then click 'Save to browser'.",
               "hint",
             );
             return;
@@ -906,6 +921,93 @@
         } catch (e) {
           setKeysStatus(
             "Load from .env failed: " + String(e?.message || e),
+            "err",
+          );
+        }
+      }
+
+      function parseDotenv(text) {
+        const out = {};
+        const lines = String(text || "")
+          .replace(/\r\n/g, "\n")
+          .split("\n");
+        for (let rawLine of lines) {
+          let line = String(rawLine || "");
+          if (!line) continue;
+          // Strip UTF-8 BOM
+          if (line.charCodeAt(0) === 0xfeff) line = line.slice(1);
+          line = line.trim();
+          if (!line || line.startsWith("#")) continue;
+          if (line.startsWith("export ")) line = line.slice("export ".length);
+
+          const eq = line.indexOf("=");
+          if (eq <= 0) continue;
+          const key = line.slice(0, eq).trim();
+          let val = line.slice(eq + 1).trim();
+          if (!key) continue;
+
+          // Remove inline comments for unquoted values: FOO=bar # comment
+          if (val && val[0] !== '"' && val[0] !== "'") {
+            const hash = val.indexOf("#");
+            if (hash >= 0) val = val.slice(0, hash).trim();
+          }
+
+          // Unquote
+          if (
+            (val.startsWith('"') && val.endsWith('"')) ||
+            (val.startsWith("'") && val.endsWith("'"))
+          ) {
+            val = val.slice(1, -1);
+          }
+
+          // Common escapes
+          val = val.replace(/\\n/g, "\n").replace(/\\r/g, "\r");
+
+          out[key] = val;
+        }
+        return out;
+      }
+
+      function applyKeysFromEnvMap(map, sourceLabel) {
+        const k = map || {};
+        let applied = 0;
+
+        if (keysUi.envOpenai && typeof k.OPENAI_API_KEY === "string") {
+          keysUi.envOpenai.value = k.OPENAI_API_KEY;
+          applied += k.OPENAI_API_KEY ? 1 : 0;
+        }
+        if (keysUi.envXai && typeof k.XAI_API_KEY === "string") {
+          keysUi.envXai.value = k.XAI_API_KEY;
+          applied += k.XAI_API_KEY ? 1 : 0;
+        }
+        if (keysUi.envGemini && typeof k.GEMINI_API_KEY === "string") {
+          keysUi.envGemini.value = k.GEMINI_API_KEY;
+          applied += k.GEMINI_API_KEY ? 1 : 0;
+        }
+        if (keysUi.envAnthropic && typeof k.ANTHROPIC_API_KEY === "string") {
+          keysUi.envAnthropic.value = k.ANTHROPIC_API_KEY;
+          applied += k.ANTHROPIC_API_KEY ? 1 : 0;
+        }
+
+        setKeysStatus(
+          applied
+            ? `Loaded ${applied} key(s) from ${sourceLabel} (not yet saved).`
+            : `Loaded from ${sourceLabel} (no matching keys found).`,
+          applied ? "ok" : "warn",
+        );
+        updatePreview();
+      }
+
+      async function loadKeysFromLocalEnvFile(file) {
+        try {
+          if (!file) return;
+          setKeysStatus(`Reading ${file.name}...`, "hint");
+          const text = await file.text();
+          const map = parseDotenv(text);
+          applyKeysFromEnvMap(map, file.name);
+        } catch (e) {
+          setKeysStatus(
+            "Failed to read .env: " + String(e?.message || e),
             "err",
           );
         }
@@ -1288,6 +1390,30 @@
       if (keysUi.loadEnvBtn)
         keysUi.loadEnvBtn.addEventListener("click", loadKeysFromEnv);
       if (keysUi.clearBtn) keysUi.clearBtn.addEventListener("click", clearKeys);
+
+      if (keysUi.browseEnvFileBtn && keysUi.envFileInput) {
+        keysUi.browseEnvFileBtn.addEventListener("click", () => {
+          try {
+            keysUi.envFileInput.click();
+          } catch {
+            // ignore
+          }
+        });
+        keysUi.envFileInput.addEventListener("change", async () => {
+          const f =
+            keysUi.envFileInput &&
+            keysUi.envFileInput.files &&
+            keysUi.envFileInput.files[0];
+          if (!f) return;
+          await loadKeysFromLocalEnvFile(f);
+          // Allow re-selecting the same file.
+          try {
+            keysUi.envFileInput.value = "";
+          } catch {
+            // ignore
+          }
+        });
+      }
       setPasswordToggle(keysUi.showOpenai, keysUi.envOpenai);
       setPasswordToggle(keysUi.showXai, keysUi.envXai);
       setPasswordToggle(keysUi.showGemini, keysUi.envGemini);
