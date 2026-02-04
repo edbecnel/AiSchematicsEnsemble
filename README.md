@@ -4,6 +4,8 @@ Multi-LLM fanout + ensembling CLI for bedini, babcock, half wave bridge circuit 
 
 If you just want to use the tool (inputs/outputs + examples), see **Help.md** (or open **help.html** for a browser-friendly version).
 
+CLI install/setup guide (HTML, GitHub Pages-friendly): **cli-help.html**.
+
 ## What it does
 
 - Queries multiple AI providers (OpenAI, xAI Grok, Gemini, Claude)
@@ -30,13 +32,13 @@ Run commands from the **project root folder** (the directory that contains `pack
 PowerShell:
 
 ```powershell
-cd "D:\Dev\RPG Ensemble\RpgEnsemble\AiSchematicsEnsemble"
+cd "D:\Dev\AiSchematicsEnsemble"
 ```
 
 Command Prompt (cmd):
 
 ```bat
-cd /d "D:\Dev\RPG Ensemble\RpgEnsemble\AiSchematicsEnsemble"
+cd /d "D:\Dev\AiSchematicsEnsemble"
 ```
 
 ## API keys (.env)

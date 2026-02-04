@@ -4,6 +4,8 @@ This document is for using the tool (inputs/outputs + interactive usage). For de
 
 For a more readable, browser-friendly version, open help.html.
 
+CLI install/setup instructions (separate page): **cli-help.html**.
+
 If you edit Help.md, refresh help.html with:
 
 ```powershell
@@ -23,13 +25,13 @@ Run commands from the **project root folder** (the directory that contains `pack
 PowerShell:
 
 ```powershell
-cd "D:\Dev\RPG Ensemble\RpgEnsemble\AiSchematicsEnsemble"
+cd "D:\Dev\AiSchematicsEnsemble"
 ```
 
 Command Prompt (cmd):
 
 ```bat
-cd /d "D:\Dev\RPG Ensemble\RpgEnsemble\AiSchematicsEnsemble"
+cd /d "D:\Dev\AiSchematicsEnsemble"
 ```
 
 ## Do I need Windows PowerShell?
@@ -81,6 +83,7 @@ Notes:
 
 - If a provider’s key is missing, calls to that provider will fail.
 - The **ensemble** step uses Claude (Anthropic). If `ANTHROPIC_API_KEY` is not set, ensembling will fail.
+- When running from the CLI, `.env` is loaded automatically from your current working directory (dotenv).
 
 ## Ways to use AiSchematicsEnsemble
 

@@ -4,7 +4,10 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AiSchematicsEnsemble — Offline UI Help</title>
-    <meta name="description" content="Help for using offline.html on GitHub Pages or locally." />
+    <meta
+      name="description"
+      content="Help for using offline.html on GitHub Pages or locally."
+    />
     <style>
       :root {
         color-scheme: light dark;
@@ -27,19 +30,22 @@
       }
       body {
         margin: 0;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Arial,
+          sans-serif;
         color: var(--fg);
         background: var(--bg);
       }
       header {
         padding: 18px;
         border-bottom: 1px solid var(--border);
-        background: linear-gradient(
-            180deg,
-            rgba(96, 165, 250, 0.14),
-            transparent 55%
-          )
-          , var(--bg);
+        background:
+          linear-gradient(180deg, rgba(96, 165, 250, 0.14), transparent 55%),
+          var(--bg);
       }
       main {
         max-width: 980px;
@@ -69,8 +75,12 @@
         color: var(--muted);
         line-height: 1.55;
       }
-      li { margin: 6px 0; }
-      a { color: var(--link); }
+      li {
+        margin: 6px 0;
+      }
+      a {
+        color: var(--link);
+      }
       code {
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
         font-size: 0.95em;
@@ -110,15 +120,17 @@
   </head>
   <body>
     <header>
-      <div style="max-width: 980px; margin: 0 auto;">
+      <div style="max-width: 980px; margin: 0 auto">
         <div class="pill">offline-help.html</div>
         <h1>AiSchematicsEnsemble — Offline UI Help</h1>
         <p>
-          This page explains how to use <code>offline.html</code> when hosted on GitHub Pages (online) or when opened directly on your computer.
+          This page explains how to use <code>offline.html</code> when hosted on
+          GitHub Pages (online) or when opened directly on your computer.
         </p>
         <div class="row">
           <a class="btn" href="index.html">Home (index.html)</a>
           <a class="btn" href="offline.html">Open app (offline.html)</a>
+          <a class="btn" href="cli-help.html">CLI install (cli-help.html)</a>
           <a class="btn" href="help.html">Full help (help.html)</a>
           <a class="btn" href="README.md">README</a>
         </div>
@@ -129,47 +141,103 @@
       <div class="card">
         <h2>What offline.html does</h2>
         <ul>
-          <li>Builds a config JSON and command lines for running the Node CLI on your machine.</li>
-          <li>It does <strong>not</strong> execute the circuit run itself in the browser.</li>
-          <li>It can store your settings and API keys in browser storage (localStorage) on your device.</li>
+          <li>
+            Builds a config JSON and command lines for running the Node CLI on
+            your machine.
+          </li>
+          <li>
+            It does <strong>not</strong> execute the circuit run itself in the
+            browser.
+          </li>
+          <li>
+            It can store your settings and API keys in browser storage
+            (localStorage) on your device.
+          </li>
         </ul>
 
         <h2>Using it on GitHub Pages (online)</h2>
         <ul>
-          <li>Open the site: <code>https://edbecnel.github.io/AiSchematicsEnsemble/</code></li>
-          <li>Click <code>Run app (offline.html)</code> or open <code>/offline.html</code> directly.</li>
-          <li>Fill in question / netlist paths (you’ll often paste paths manually; browsers don’t expose real file paths).</li>
-          <li>Copy the generated command and run it locally inside your project folder.</li>
+          <li>
+            Open the site:
+            <code>https://edbecnel.github.io/AiSchematicsEnsemble/</code>
+          </li>
+          <li>
+            Click <code>Run app (offline.html)</code> or open
+            <code>/offline.html</code> directly.
+          </li>
+          <li>
+            Fill in question / netlist paths (you’ll often paste paths manually;
+            browsers don’t expose real file paths).
+          </li>
+          <li>
+            Copy the generated command and run it locally inside your project
+            folder.
+          </li>
         </ul>
 
         <h2>API keys (.env) on the client machine</h2>
         <p>
-          GitHub Pages cannot read a server-side <code>.env</code>. Instead, the Offline UI lets you load keys from a local file.
+          GitHub Pages cannot read a server-side <code>.env</code>. Instead, the
+          Offline UI lets you load keys from a local file.
         </p>
+        <div class="note">
+          If you are running the tool from the CLI (no server), you normally do
+          <strong>not</strong> need this browser key workflow: the CLI
+          automatically loads <code>.env</code> from the folder you run it from.
+          See <a href="cli-help.html">cli-help.html</a>.
+        </div>
         <ul>
-          <li>In <code>offline.html</code>, click <code>API Keys…</code> (or any <code>Keys</code> button next to a model).</li>
-          <li>Click <code>Browse… .env</code> and select your local <code>.env</code> file.</li>
-          <li>Optionally click <code>Save to browser</code> to persist keys on this device/browser.</li>
+          <li>
+            In <code>offline.html</code>, click <code>API Keys…</code> (or any
+            <code>Keys</code> button next to a model).
+          </li>
+          <li>
+            Click <code>Browse… .env</code> and select your local
+            <code>.env</code> file.
+          </li>
+          <li>
+            Optionally click <code>Save to browser</code> to persist keys on
+            this device/browser.
+          </li>
         </ul>
         <div class="note">
-          Security note: keys never leave your browser unless you paste them somewhere else. Still, treat your browser profile as sensitive and avoid using shared computers.
+          Security note: keys never leave your browser unless you paste them
+          somewhere else. Still, treat your browser profile as sensitive and
+          avoid using shared computers.
         </div>
 
         <h2>Opening offline.html directly (file://)</h2>
         <ul>
-          <li>You can download <code>offline.html</code> and open it locally.</li>
-          <li>File pickers will show filenames, but browsers typically won’t reveal full local paths. You may need to paste real paths.</li>
-          <li>Browser storage can be blocked in some privacy modes; if so, keys/config cannot be saved.</li>
+          <li>
+            You can download <code>offline.html</code> and open it locally.
+          </li>
+          <li>
+            File pickers will show filenames, but browsers typically won’t
+            reveal full local paths. You may need to paste real paths.
+          </li>
+          <li>
+            Browser storage can be blocked in some privacy modes; if so,
+            keys/config cannot be saved.
+          </li>
         </ul>
 
         <h2>Recommended: run the local UI server (best experience)</h2>
         <p>
-          When you run the project’s UI server locally, uploads work and the UI can read your project <code>.env</code> via an API endpoint.
+          When you run the project’s UI server locally, uploads work and the UI
+          can read your project <code>.env</code> via an API endpoint.
         </p>
         <ul>
-          <li>Install + build: <code>npm install</code>, then <code>npm run build</code></li>
-          <li>Start UI: <code>npm run ui</code> (or <code>npm run dev:ui</code>)</li>
-          <li>Then open the local URL it prints (default <code>http://127.0.0.1:3210</code>)</li>
+          <li>
+            Install + build: <code>npm install</code>, then
+            <code>npm run build</code>
+          </li>
+          <li>
+            Start UI: <code>npm run ui</code> (or <code>npm run dev:ui</code>)
+          </li>
+          <li>
+            Then open the local URL it prints (default
+            <code>http://127.0.0.1:3210</code>)
+          </li>
         </ul>
       </div>
     </main>
