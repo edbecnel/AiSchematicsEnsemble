@@ -4,17 +4,187 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>AiSchematicsEnsemble</title>
-    <meta http-equiv="refresh" content="0; url=offline.html" />
-    <link rel="canonical" href="offline.html" />
+    <meta
+      name="description"
+      content="AiSchematicsEnsemble — run in-browser (offline.html) or read help."
+    />
+    <meta http-equiv="refresh" content="3; url=offline.html" />
   </head>
   <body>
-    <noscript>
-      <p>This page requires JavaScript for automatic redirect.</p>
-    </noscript>
-    <p>Redirecting to <a href="offline.html">offline.html</a>…</p>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --fg: #111827;
+        --muted: #6b7280;
+        --bg: #ffffff;
+        --card: #f9fafb;
+        --border: rgba(0, 0, 0, 0.12);
+        --btn: #111827;
+        --btnfg: #ffffff;
+        --link: #2563eb;
+      }
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #e5e7eb;
+          --muted: #9ca3af;
+          --bg: #0b1020;
+          --card: #0f172a;
+          --border: rgba(255, 255, 255, 0.16);
+          --btn: #e5e7eb;
+          --btnfg: #111827;
+          --link: #60a5fa;
+        }
+      }
+
+      body {
+        margin: 0;
+        font-family:
+          system-ui,
+          -apple-system,
+          Segoe UI,
+          Roboto,
+          Arial,
+          sans-serif;
+        color: var(--fg);
+        background:
+          radial-gradient(
+            1200px 600px at 30% 10%,
+            rgba(96, 165, 250, 0.18),
+            transparent 60%
+          ),
+          radial-gradient(
+            1000px 500px at 70% 0%,
+            rgba(34, 197, 94, 0.12),
+            transparent 55%
+          ),
+          var(--bg);
+      }
+
+      .wrap {
+        max-width: 880px;
+        margin: 48px auto;
+        padding: 0 18px;
+      }
+
+      .card {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 14px;
+        padding: 18px;
+        box-shadow: 0 14px 50px rgba(0, 0, 0, 0.18);
+      }
+
+      h1 {
+        margin: 0 0 6px;
+        font-size: 28px;
+        letter-spacing: -0.02em;
+      }
+
+      p {
+        margin: 8px 0;
+        line-height: 1.5;
+        color: var(--muted);
+      }
+
+      .row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin-top: 14px;
+      }
+
+      a.btn {
+        display: inline-block;
+        padding: 10px 12px;
+        border-radius: 10px;
+        text-decoration: none;
+        border: 1px solid var(--border);
+        color: var(--fg);
+        background: transparent;
+      }
+
+      a.btn.primary {
+        border-color: transparent;
+        background: var(--btn);
+        color: var(--btnfg);
+        font-weight: 600;
+      }
+
+      a {
+        color: var(--link);
+      }
+      code {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      }
+      .fine {
+        font-size: 13px;
+      }
+      .status {
+        margin-top: 12px;
+      }
+    </style>
+
+    <div class="wrap">
+      <div class="card">
+        <h1>AiSchematicsEnsemble</h1>
+        <p>
+          Default app is <code>offline.html</code> (single-page, runs in the
+          browser). You can also open it directly.
+        </p>
+
+        <div class="row">
+          <a class="btn primary" href="offline.html">Run app (offline.html)</a>
+          <a class="btn" href="help.html">Help (help.html)</a>
+          <a class="btn" href="offline.html" download>Download offline.html</a>
+          <a class="btn" href="README.md">README</a>
+        </div>
+
+        <div class="status fine" id="status"></div>
+        <noscript>
+          <p class="fine">
+            JavaScript is disabled; use <a href="offline.html">offline.html</a>.
+          </p>
+        </noscript>
+      </div>
+
+      <p class="fine" style="margin-top: 12px">
+        Tip: to stay on this page (no auto-start), add <code>?stay=1</code> to
+        the URL.
+      </p>
+    </div>
+
     <script>
-      // Prefer JS redirect to avoid adding browser history entries.
-      window.location.replace('offline.html');
+      (function () {
+        const status = document.getElementById("status");
+        const params = new URLSearchParams(window.location.search);
+        const stay =
+          params.get("stay") === "1" || params.get("stay") === "true";
+
+        if (stay) {
+          status.textContent = "Auto-start disabled (stay=1).";
+          return;
+        }
+
+        let seconds = 2;
+        status.textContent = `Starting offline.html in ${seconds}s… `;
+
+        const cancel = document.createElement("a");
+        cancel.href = "?stay=1";
+        cancel.textContent = "Cancel";
+        cancel.style.marginLeft = "8px";
+        status.appendChild(cancel);
+
+        const timer = setInterval(() => {
+          seconds -= 1;
+          if (seconds <= 0) {
+            clearInterval(timer);
+            window.location.replace("offline.html");
+            return;
+          }
+          status.firstChild.nodeValue = `Starting offline.html in ${seconds}s… `;
+        }, 1000);
+      })();
     </script>
   </body>
 </html>
