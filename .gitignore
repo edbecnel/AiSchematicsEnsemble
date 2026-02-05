@@ -5,3 +5,6 @@ runs*/
 .env
 !.env.example
 .DS_Store
+
+# Locally downloaded/generated configs (keep ai-schematics.config.example.json tracked)
+ai-schematics.config.*.json
