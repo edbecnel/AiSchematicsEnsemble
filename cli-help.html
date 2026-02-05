@@ -28,6 +28,24 @@
           --link: #60a5fa;
         }
       }
+      html[data-theme="light"] {
+        color-scheme: light;
+        --fg: #111827;
+        --muted: #6b7280;
+        --bg: #ffffff;
+        --card: #f9fafb;
+        --border: rgba(0, 0, 0, 0.12);
+        --link: #2563eb;
+      }
+      html[data-theme="dark"] {
+        color-scheme: dark;
+        --fg: #e5e7eb;
+        --muted: #9ca3af;
+        --bg: #0b1020;
+        --card: #0f172a;
+        --border: rgba(255, 255, 255, 0.16);
+        --link: #60a5fa;
+      }
       body {
         margin: 0;
         font-family:
@@ -138,6 +156,19 @@
           grid-template-columns: 1fr;
         }
       }
+
+      .themeWrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .themeSelect {
+        padding: 6px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--border);
+        background: rgba(127, 127, 127, 0.08);
+        color: var(--fg);
+      }
     </style>
   </head>
   <body>
@@ -150,6 +181,14 @@
           is the "real" runner (it produces the run folders and outputs).
         </p>
         <div class="row">
+          <span class="themeWrap pill" title="Theme (defaults to System)">
+            Theme
+            <select id="themeSelect" class="themeSelect">
+              <option value="system">System</option>
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </span>
           <a class="btn" href="index.html">Home (index.html)</a>
           <a class="btn" href="offline-help.html">Offline UI help</a>
           <a class="btn" href="help.html">Full help (help.html)</a>
@@ -285,5 +324,51 @@ ai-schematics-ensemble --help</code></pre>
         </ul>
       </div>
     </main>
+
+    <script>
+      (function () {
+        const THEME_KEY = "ai-schematics-theme-v1";
+        const sel = document.getElementById("themeSelect");
+
+        function apply(choice) {
+          const c = String(choice || "").toLowerCase();
+          if (c === "dark" || c === "light") {
+            document.documentElement.dataset.theme = c;
+          } else {
+            try {
+              delete document.documentElement.dataset.theme;
+            } catch {
+              document.documentElement.removeAttribute("data-theme");
+            }
+          }
+        }
+
+        function load() {
+          let saved = "system";
+          try {
+            saved = localStorage.getItem(THEME_KEY) || "system";
+          } catch {
+            saved = "system";
+          }
+          if (sel) sel.value = saved;
+          apply(saved);
+        }
+
+        function save(choice) {
+          const c = String(choice || "system").toLowerCase();
+          try {
+            if (c === "dark" || c === "light")
+              localStorage.setItem(THEME_KEY, c);
+            else localStorage.removeItem(THEME_KEY);
+          } catch {
+            // ignore
+          }
+          apply(c);
+        }
+
+        load();
+        if (sel) sel.addEventListener("change", () => save(sel.value));
+      })();
+    </script>
   </body>
 </html>

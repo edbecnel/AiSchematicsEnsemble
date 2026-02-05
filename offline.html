@@ -12,6 +12,61 @@
       }
       :root {
         color-scheme: light dark;
+        --fg: #111827;
+        --muted: #6b7280;
+        --bg: #ffffff;
+        --card: #f9fafb;
+        --border: rgba(0, 0, 0, 0.18);
+        --field-border: rgba(0, 0, 0, 0.25);
+        --field-bg: rgba(127, 127, 127, 0.08);
+        --btn-bg: rgba(127, 127, 127, 0.12);
+        --btn-border: rgba(0, 0, 0, 0.25);
+        --primary: #2563eb;
+        --primary-fg: #ffffff;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fg: #e5e7eb;
+          --muted: #9ca3af;
+          --bg: #0b1020;
+          --card: #0f172a;
+          --border: rgba(255, 255, 255, 0.18);
+          --field-border: rgba(255, 255, 255, 0.22);
+          --field-bg: rgba(127, 127, 127, 0.12);
+          --btn-bg: rgba(127, 127, 127, 0.18);
+          --btn-border: rgba(255, 255, 255, 0.22);
+          --primary: #3b82f6;
+          --primary-fg: #ffffff;
+        }
+      }
+
+      html[data-theme="light"] {
+        color-scheme: light;
+        --fg: #111827;
+        --muted: #6b7280;
+        --bg: #ffffff;
+        --card: #f9fafb;
+        --border: rgba(0, 0, 0, 0.18);
+        --field-border: rgba(0, 0, 0, 0.25);
+        --field-bg: rgba(127, 127, 127, 0.08);
+        --btn-bg: rgba(127, 127, 127, 0.12);
+        --btn-border: rgba(0, 0, 0, 0.25);
+        --primary: #2563eb;
+        --primary-fg: #ffffff;
+      }
+      html[data-theme="dark"] {
+        color-scheme: dark;
+        --fg: #e5e7eb;
+        --muted: #9ca3af;
+        --bg: #0b1020;
+        --card: #0f172a;
+        --border: rgba(255, 255, 255, 0.18);
+        --field-border: rgba(255, 255, 255, 0.22);
+        --field-bg: rgba(127, 127, 127, 0.12);
+        --btn-bg: rgba(127, 127, 127, 0.18);
+        --btn-border: rgba(255, 255, 255, 0.22);
+        --primary: #3b82f6;
+        --primary-fg: #ffffff;
       }
       body {
         font-family:
@@ -21,10 +76,12 @@
           Roboto,
           Arial;
         margin: 0;
+        color: var(--fg);
+        background: var(--bg);
       }
       header {
         padding: 14px 18px;
-        border-bottom: 1px solid rgba(127, 127, 127, 0.3);
+        border-bottom: 1px solid var(--border);
       }
       main {
         padding: 18px;
@@ -42,9 +99,10 @@
         }
       }
       .card {
-        border: 1px solid rgba(127, 127, 127, 0.3);
+        border: 1px solid var(--border);
         border-radius: 12px;
         padding: 14px;
+        background: var(--card);
       }
       .row {
         display: grid;
@@ -66,8 +124,8 @@
         min-width: 0;
         padding: 8px 10px;
         border-radius: 8px;
-        border: 1px solid rgba(127, 127, 127, 0.4);
-        background: rgba(127, 127, 127, 0.06);
+        border: 1px solid var(--field-border);
+        background: var(--field-bg);
         color: inherit;
       }
       textarea {
@@ -75,13 +133,14 @@
         min-width: 0;
         padding: 10px;
         border-radius: 10px;
-        border: 1px solid rgba(127, 127, 127, 0.3);
-        background: rgba(127, 127, 127, 0.06);
+        border: 1px solid var(--border);
+        background: var(--field-bg);
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
       }
       .hint {
         opacity: 0.75;
         font-size: 12px;
+        color: var(--muted);
       }
       .actions {
         display: flex;
@@ -91,15 +150,16 @@
       }
       button {
         padding: 8px 12px;
-        border-radius: 10px;
-        border: 1px solid rgba(127, 127, 127, 0.4);
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: inherit;
         background: rgba(127, 127, 127, 0.12);
         cursor: pointer;
       }
       .btnLike {
         padding: 8px 12px;
-        border-radius: 10px;
-        border: 1px solid rgba(127, 127, 127, 0.4);
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
         background: rgba(127, 127, 127, 0.12);
         cursor: pointer;
         display: inline-flex;
@@ -107,10 +167,23 @@
         justify-content: center;
         user-select: none;
       }
-      button.primary {
-        background: #2563eb;
-        color: white;
+        background: var(--primary);
+        color: var(--primary-fg);
+        border-color: var(--primary);
         border-color: #2563eb;
+
+      .themeWrap {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .themeSelect {
+        padding: 6px 10px;
+        border-radius: 10px;
+        border: 1px solid var(--btn-border);
+        background: var(--btn-bg);
+        color: inherit;
+      }
       }
       .mono {
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -151,6 +224,14 @@
             justify-content: flex-end;
           "
         >
+          <span class="themeWrap hint" title="Theme (defaults to System)">
+            Theme
+            <select id="themeSelect" class="themeSelect">
+              <option value="system">System</option>
+              <option value="dark">Dark</option>
+              <option value="light">Light</option>
+            </select>
+          </span>
           <a class="hint" id="helpLink" href="offline-help.html"
             >Offline help</a
           >
@@ -560,6 +641,7 @@
     </div>
 
     <script>
+      const THEME_KEY = "ai-schematics-theme-v1";
       const KEY = "ai-schematics-offline-config-v1";
       const KEYS_KEY = "ai-schematics-offline-keys-v1";
 
@@ -630,10 +712,49 @@
       const headerEls = {
         helpLink: document.getElementById("helpLink"),
         offlineHint: document.getElementById("offlineHint"),
+        themeSelect: document.getElementById("themeSelect"),
       };
 
       const IS_SERVER =
         location.protocol === "http:" || location.protocol === "https:";
+
+      function applyThemeChoice(choice) {
+        const c = String(choice || "").toLowerCase();
+        if (c === "dark" || c === "light") {
+          document.documentElement.dataset.theme = c;
+        } else {
+          // System default
+          try {
+            delete document.documentElement.dataset.theme;
+          } catch {
+            document.documentElement.removeAttribute("data-theme");
+          }
+        }
+      }
+
+      function loadTheme() {
+        try {
+          const saved = localStorage.getItem(THEME_KEY);
+          if (headerEls.themeSelect) {
+            headerEls.themeSelect.value = saved || "system";
+          }
+          applyThemeChoice(saved || "system");
+        } catch {
+          if (headerEls.themeSelect) headerEls.themeSelect.value = "system";
+          applyThemeChoice("system");
+        }
+      }
+
+      function saveTheme(choice) {
+        const c = String(choice || "system").toLowerCase();
+        try {
+          if (c === "dark" || c === "light") localStorage.setItem(THEME_KEY, c);
+          else localStorage.removeItem(THEME_KEY);
+        } catch {
+          // ignore
+        }
+        applyThemeChoice(c);
+      }
 
       function clean(s) {
         const t = String(s ?? "").trim();
@@ -1441,6 +1562,14 @@
 
       // Load previously saved keys/config
       loadKeys();
+
+      // Theme
+      loadTheme();
+      if (headerEls.themeSelect) {
+        headerEls.themeSelect.addEventListener("change", () => {
+          saveTheme(headerEls.themeSelect.value);
+        });
+      }
 
       updatePreview();
     </script>
