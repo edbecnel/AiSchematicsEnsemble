@@ -397,6 +397,23 @@ If you use provider `ensemble`, each turn also writes per-turn artifacts under `
 
 That’s expected if Graphviz isn’t installed. You will still get `schematic.dot`. Install Graphviz and ensure `dot` is on your PATH to also get `schematic.png`.
 
+#### Install Graphviz on Windows
+
+1. Download the official Graphviz Windows x64 installer:
+
+- https://graphviz.org/download/ (pick the stable Windows build)
+
+2. Run the installer.
+
+- If it offers an option like “Add Graphviz to PATH”, enable it.
+
+3. Close and reopen your terminal, then verify `dot` is available:
+
+```powershell
+dot -V
+where.exe dot
+```
+
 ### Provider errors / empty responses
 
 - Check you set the correct API key in `.env`

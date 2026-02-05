@@ -25,6 +25,19 @@ CLI install/setup guide (HTML, GitHub Pages-friendly): **cli-help.html**.
 - Optional: Graphviz (`dot`) if you want `schematic.png` auto-rendered
 - Optional: ngspice if you later add simulation (stub is included)
 
+### Graphviz (Windows)
+
+If you want `schematic.png` generated automatically, install Graphviz and ensure `dot` is on PATH:
+
+1. Download the stable Windows x64 installer: https://graphviz.org/download/
+2. Run the installer (enable “Add Graphviz to PATH” if offered)
+3. Reopen PowerShell and verify:
+
+```powershell
+dot -V
+where.exe dot
+```
+
 ## Where to run commands
 
 Run commands from the **project root folder** (the directory that contains `package.json`).

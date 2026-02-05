@@ -171,6 +171,34 @@
           </li>
         </ul>
 
+        <h3 id="graphviz-windows">Optional: Install Graphviz (Windows)</h3>
+        <p>
+          Graphviz is only needed if you want the tool to also render
+          <code>schematic.png</code>. Without it, you will still get
+          <code>schematic.dot</code>.
+        </p>
+        <ol style="color: var(--muted); line-height: 1.55">
+          <li>
+            Download the official Windows x64 installer from
+            <a
+              href="https://graphviz.org/download/"
+              target="_blank"
+              rel="noreferrer"
+              >https://graphviz.org/download/</a
+            >
+            (pick the stable Windows build).
+          </li>
+          <li>
+            Run the installer. If it offers an option like “Add Graphviz to
+            PATH”, enable it.
+          </li>
+          <li>
+            Close and reopen PowerShell (so PATH refreshes), then verify:
+            <pre><code>dot -V
+where.exe dot</code></pre>
+          </li>
+        </ol>
+
         <h2>Install (recommended: run from this repo)</h2>
         <p>From a terminal:</p>
         <pre><code>git clone https://github.com/edbecnel/AiSchematicsEnsemble.git
@@ -241,7 +269,8 @@ ai-schematics-ensemble --help</code></pre>
           </li>
           <li>
             <strong>No schematic.png</strong>: install Graphviz and ensure
-            <code>dot</code> is on PATH.
+            <code>dot</code> is on PATH (see
+            <a href="#graphviz-windows">Graphviz install steps</a>).
           </li>
           <li>
             <strong>Windows line endings warnings</strong>: harmless; Git may
