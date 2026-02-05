@@ -116,6 +116,57 @@
         background: rgba(127, 127, 127, 0.08);
         color: var(--muted);
       }
+
+      .toc {
+        margin: 12px 0 0;
+        padding: 12px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(127, 127, 127, 0.06);
+      }
+      .toc strong {
+        display: block;
+        margin-bottom: 6px;
+        color: var(--fg);
+      }
+      .toc ul {
+        margin: 8px 0 0 18px;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+        margin: 10px 0;
+        overflow: hidden;
+        border: 1px solid var(--border);
+        border-radius: 12px;
+        background: rgba(127, 127, 127, 0.04);
+      }
+      th,
+      td {
+        text-align: left;
+        vertical-align: top;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--border);
+      }
+      th {
+        color: var(--fg);
+        font-weight: 650;
+        background: rgba(127, 127, 127, 0.06);
+      }
+      tr:last-child td {
+        border-bottom: none;
+      }
+
+      .kbd {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 0.95em;
+        padding: 2px 6px;
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        background: rgba(127, 127, 127, 0.1);
+        color: var(--fg);
+      }
     </style>
   </head>
   <body>
@@ -139,104 +190,417 @@
 
     <main>
       <div class="card">
-        <h2>What offline.html does</h2>
+        <h2 id="overview">What offline.html is (and isn’t)</h2>
         <ul>
           <li>
-            Builds a config JSON and command lines for running the Node CLI on
-            your machine.
+            <strong>It is a helper page</strong> that generates a config JSON
+            plus copy/paste CLI commands.
           </li>
           <li>
-            It does <strong>not</strong> execute the circuit run itself in the
-            browser.
+            <strong>It does not run anything in the browser</strong>. Your
+            actual run happens when you paste the command into a terminal.
           </li>
           <li>
-            It can store your settings and API keys in browser storage
-            (localStorage) on your device.
+            It can store your settings and (optionally) API keys in browser
+            storage (<code>localStorage</code>) on your device.
           </li>
         </ul>
 
-        <h2>Using it on GitHub Pages (online)</h2>
-        <ul>
-          <li>
-            Open the site:
-            <code>https://edbecnel.github.io/AiSchematicsEnsemble/</code>
-          </li>
-          <li>
-            Click <code>Run app (offline.html)</code> or open
-            <code>/offline.html</code> directly.
-          </li>
-          <li>
-            Fill in question / netlist paths (you’ll often paste paths manually;
-            browsers don’t expose real file paths).
-          </li>
-          <li>
-            Copy the generated command and run it locally inside your project
-            folder.
-          </li>
-        </ul>
-
-        <h2>API keys (.env) on the client machine</h2>
-        <p>
-          GitHub Pages cannot read a server-side <code>.env</code>. Instead, the
-          Offline UI lets you load keys from a local file.
-        </p>
-        <div class="note">
-          If you are running the tool from the CLI (no server), you normally do
-          <strong>not</strong> need this browser key workflow: the CLI
-          automatically loads <code>.env</code> from the folder you run it from.
-          See <a href="cli-help.html">cli-help.html</a>.
-        </div>
-        <ul>
-          <li>
-            In <code>offline.html</code>, click <code>API Keys…</code> (or any
-            <code>Keys</code> button next to a model).
-          </li>
-          <li>
-            Click <code>Browse… .env</code> and select your local
-            <code>.env</code> file.
-          </li>
-          <li>
-            Optionally click <code>Save to browser</code> to persist keys on
-            this device/browser.
-          </li>
-        </ul>
-        <div class="note">
-          Security note: keys never leave your browser unless you paste them
-          somewhere else. Still, treat your browser profile as sensitive and
-          avoid using shared computers.
+        <div class="toc">
+          <strong>On this page</strong>
+          <ul>
+            <li><a href="#quickstart">Quick start</a></li>
+            <li><a href="#modes">Three ways to open offline.html</a></li>
+            <li><a href="#paths">Understanding file paths</a></li>
+            <li><a href="#controls">UI controls (what each one does)</a></li>
+            <li><a href="#keys">API keys modal</a></li>
+            <li><a href="#commands">Command preview (A vs B)</a></li>
+            <li><a href="#troubleshooting">Troubleshooting</a></li>
+            <li><a href="#faq">FAQ</a></li>
+          </ul>
         </div>
 
-        <h2>Opening offline.html directly (file://)</h2>
+        <h2 id="quickstart">Quick start</h2>
+        <p>
+          The best experience is to run the local UI server (it enables uploads
+          and <code>Load from .env</code>). If you can’t, you can still use
+          offline.html by pasting paths manually.
+        </p>
+        <h3>Recommended: local UI server</h3>
+        <ol>
+          <li>
+            In a terminal at the project root: <code>npm install</code>, then
+            <code>npm run build</code>.
+          </li>
+          <li>Start the UI: <code>npm run ui</code>.</li>
+          <li>
+            Open the printed URL (default is
+            <code>http://127.0.0.1:3210/</code>; if busy it may choose
+            <code>3211</code>, <code>3212</code>, etc.).
+          </li>
+          <li>
+            Open <code>offline.html</code> from that server (use the “Offline
+            config” link if present).
+          </li>
+          <li>
+            Use the file pickers to upload <code>question.md</code>, your
+            baseline netlist, and/or baseline image. Click
+            <span class="kbd">Update preview</span>.
+          </li>
+          <li>
+            Click <span class="kbd">Download JSON</span> and save it into your
+            project root (same folder as <code>package.json</code>).
+          </li>
+          <li>
+            Copy the PowerShell or cmd command from “Command preview” and run it
+            locally.
+          </li>
+        </ol>
+        <div class="note">
+          The generated commands include <code>--no-prompts</code> so the run is
+          non-interactive. If you prefer prompts, remove that flag.
+        </div>
+
+        <h3>Minimal: open the file directly (file://)</h3>
+        <ol>
+          <li>Open <code>offline.html</code> in your browser.</li>
+          <li>
+            Paste real paths into the text boxes (Windows example:
+            <code>D:\\Dev\\AiSchematicsEnsemble\\examples\\question.md</code>).
+          </li>
+          <li>
+            Click <span class="kbd">Update preview</span>, then copy a command
+            and run it from the project root.
+          </li>
+        </ol>
+
+        <h2 id="modes">Three ways to open offline.html</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Where you open it</th>
+              <th>What works best</th>
+              <th>What to watch for</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Local UI server</strong> (recommended)</td>
+              <td>
+                File picker uploads (gets real paths),
+                <code>Load from .env</code>
+                button works.
+              </td>
+              <td>
+                Still doesn’t “run in browser” — it only generates commands.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>GitHub Pages</strong> (online hosting)</td>
+              <td>Good for generating commands and downloading JSON.</td>
+              <td>
+                There is no backend, so uploads and “Load from .env” won’t work.
+                Paste paths manually.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Direct file open</strong> (<code>file://</code>)</td>
+              <td>Good for generating commands.</td>
+              <td>
+                Browsers do not reveal full local file paths to JavaScript. File
+                picker will only provide a filename; paste a real path.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2 id="paths">Understanding file paths</h2>
         <ul>
           <li>
-            You can download <code>offline.html</code> and open it locally.
+            Every path you enter is a path that the <strong>CLI</strong> must be
+            able to read when you run the generated command.
           </li>
           <li>
-            File pickers will show filenames, but browsers typically won’t
-            reveal full local paths. You may need to paste real paths.
+            Relative paths (like <code>examples/question.md</code>) are resolved
+            relative to where you run the command (usually the project root).
           </li>
           <li>
-            Browser storage can be blocked in some privacy modes; if so,
-            keys/config cannot be saved.
+            Absolute paths (like <code>D:\\...\\question.md</code>) are fine if
+            you prefer.
           </li>
         </ul>
+        <div class="note">
+          If you use the local UI server, picking a file uploads it and replaces
+          the text box with a server path. That makes the generated command
+          “just work” when run from the project root.
+        </div>
 
-        <h2>Recommended: run the local UI server (best experience)</h2>
+        <h2 id="controls">UI controls (what each one does)</h2>
         <p>
-          When you run the project’s UI server locally, uploads work and the UI
-          can read your project <code>.env</code> via an API endpoint.
+          These names match what you’ll see in <code>offline.html</code>. Think
+          of the left card as “config inputs” and the right card as “copy/paste
+          output”.
+        </p>
+
+        <h3>Inputs</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Control</th>
+              <th>What it does</th>
+              <th>Tips / gotchas</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Question file</strong></td>
+              <td>
+                Required. The markdown/text prompt that describes your goal and
+                constraints.
+              </td>
+              <td>If blank, the preview warns because the CLI requires it.</td>
+            </tr>
+            <tr>
+              <td><strong>Baseline netlist</strong></td>
+              <td>
+                Optional but recommended. A SPICE netlist (e.g.
+                <code>.cir</code>) representing your current circuit.
+              </td>
+              <td>
+                Use <code>Bundle includes</code> if your netlist uses
+                <code>.include</code> / <code>.lib</code> files.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Baseline image</strong></td>
+              <td>
+                Optional. A schematic screenshot/photo to give the models extra
+                context.
+              </td>
+              <td>
+                Any <code>image/*</code> file is accepted (png/jpg/webp, etc.).
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Outdir</strong></td>
+              <td>
+                Where runs are written (default <code>runs</code>), relative to
+                the project root unless you use an absolute path.
+              </td>
+              <td>
+                Use a separate folder when experimenting so you can compare
+                outputs across runs.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Bundle includes</strong></td>
+              <td>
+                Controls whether the CLI copies referenced include files into
+                the run folder.
+              </td>
+              <td>
+                This is a text field: set it to <code>true</code> /
+                <code>false</code> (also accepts <code>1</code>,
+                <code>yes</code>, <code>y</code>).
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Browse “…”</strong> (file picker)</td>
+              <td>Selects a local file for convenience.</td>
+              <td>
+                If served by the local UI server, the file is uploaded and the
+                path becomes a real server path. Otherwise you’ll likely need to
+                paste a real path manually.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>✕</strong> (clear button)</td>
+              <td>Clears the corresponding path and picked-file hint.</td>
+              <td>
+                Useful when switching between a server-uploaded path and a
+                manual path.
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h3>Models (optional)</h3>
+        <p>
+          These fields control the model names passed to the CLI. If you clear a
+          model field, it will be omitted from the explicit command.
         </p>
         <ul>
           <li>
-            Install + build: <code>npm install</code>, then
-            <code>npm run build</code>
+            <strong>OpenAI model</strong> → adds <code>--openai-model</code>
+          </li>
+          <li><strong>Grok model</strong> → adds <code>--grok-model</code></li>
+          <li>
+            <strong>Gemini model</strong> → adds <code>--gemini-model</code>
           </li>
           <li>
-            Start UI: <code>npm run ui</code> (or <code>npm run dev:ui</code>)
+            <strong>Claude model</strong> → adds <code>--claude-model</code>
+          </li>
+        </ul>
+        <div class="note">
+          Ensemble uses Claude (Anthropic). If you don’t have an Anthropic key
+          available when you run the CLI, the ensemble step will fail.
+        </div>
+
+        <h3>Config actions</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>Button</th>
+              <th>What it does</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><strong>Update preview</strong></td>
+              <td>Rebuilds the command preview from the current fields.</td>
+              <td>
+                Also runs automatically after many actions (file pick/import,
+                keys load, etc.).
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Save config to browser</strong></td>
+              <td>Saves the current config JSON into this browser profile.</td>
+              <td>
+                Uses <code>localStorage</code>. Privacy mode or strict settings
+                may block it.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Load config from browser</strong></td>
+              <td>Loads the last saved config from this browser profile.</td>
+              <td>Does not affect any files on disk.</td>
+            </tr>
+            <tr>
+              <td><strong>Download JSON</strong></td>
+              <td>Downloads a config JSON file to your computer.</td>
+              <td>The filename comes from “Config filename” on the right.</td>
+            </tr>
+            <tr>
+              <td><strong>Import JSON</strong></td>
+              <td>Loads a config JSON file you previously downloaded.</td>
+              <td>
+                Handy for sharing configs or iterating on saved experiments.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Clear saved config</strong></td>
+              <td>Deletes the browser-saved config.</td>
+              <td>Does not delete downloaded JSON files.</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <h2 id="keys">API keys modal (offline)</h2>
+        <p>
+          Open it using <span class="kbd">API Keys…</span> or any model’s
+          <span class="kbd">Keys</span> button. Keys are used only to generate
+          commands (as environment-variable prefixes).
+        </p>
+        <ul>
+          <li>
+            <strong>Show/Hide</strong> toggles masking for each key field.
           </li>
           <li>
-            Then open the local URL it prints (default
-            <code>http://127.0.0.1:3210</code>)
+            <strong>Save to browser</strong> stores the keys in
+            <code>localStorage</code> for future visits.
+          </li>
+          <li>
+            <strong>Browse… .env</strong> lets you load keys from a local
+            <code>.env</code> file (it reads the file in the browser). This does
+            <em>not</em> save them unless you click “Save to browser”.
+          </li>
+          <li>
+            <strong>Load from .env</strong> appears only when offline.html is
+            served by the local UI server. It fetches keys from the project’s
+            <code>.env</code> via an API endpoint and fills the fields.
+          </li>
+          <li>
+            <strong>Clear browser keys</strong> deletes the browser-saved keys.
+          </li>
+        </ul>
+        <div class="note">
+          If you already have a working <code>.env</code> and you run the CLI
+          from the project root, you often don’t need any of this: the CLI loads
+          <code>.env</code> automatically. See
+          <a href="cli-help.html">cli-help.html</a>.
+        </div>
+
+        <h2 id="commands">Command preview: option A vs option B</h2>
+        <p>
+          The right-hand card shows two ways to run the exact same
+          configuration.
+        </p>
+        <ul>
+          <li>
+            <strong>A) Run using JSON config</strong> uses
+            <code>--config ai-schematics.config.json</code>. This is the easiest
+            to share and reproduce.
+          </li>
+          <li>
+            <strong>B) Run using explicit parameters</strong> spells out every
+            flag. This is useful when you don’t want to manage a config file.
+          </li>
+        </ul>
+        <p>
+          Each preview includes both a PowerShell and a cmd.exe version, plus an
+          optional environment-variable prefix if you filled in keys.
+        </p>
+
+        <h2 id="troubleshooting">Troubleshooting</h2>
+        <ul>
+          <li>
+            <strong>“Question file is required”</strong>: fill in “Question
+            file” with a real path the CLI can read.
+          </li>
+          <li>
+            <strong>File picker only shows a filename</strong>: this is expected
+            in <code>file://</code> mode. Paste the full path manually.
+          </li>
+          <li>
+            <strong>Upload failed</strong> when hosted online: GitHub Pages has
+            no backend endpoints (<code>/api/upload</code>), so uploads cannot
+            work. Paste paths manually.
+          </li>
+          <li>
+            <strong>“Save to browser” fails</strong>: your browser may be
+            blocking <code>localStorage</code> (privacy mode, strict settings,
+            corporate policy). You can still use “Download JSON”.
+          </li>
+          <li>
+            <strong>Copy buttons don’t copy</strong>: some environments block
+            clipboard access. Select the text and copy manually.
+          </li>
+          <li>
+            <strong>Paths with spaces</strong>: use the preview’s quoted command
+            exactly; it adds quoting for PowerShell/cmd.
+          </li>
+          <li>
+            <strong>Build missing</strong>: the commands assume you’ve run
+            <code>npm run build</code> so <code>dist/index.js</code> exists.
+          </li>
+        </ul>
+
+        <h2 id="faq">FAQ</h2>
+        <ul>
+          <li>
+            <strong>Does offline.html run the tool?</strong> No. It only
+            generates config + commands.
+          </li>
+          <li>
+            <strong>Where should I run the generated command?</strong> From the
+            project root (the folder containing <code>package.json</code>).
+          </li>
+          <li>
+            <strong>Are my keys sent anywhere?</strong> Not by this page. They
+            are used locally to generate environment-variable prefixes. Still,
+            avoid saving keys in a shared browser profile.
           </li>
         </ul>
       </div>

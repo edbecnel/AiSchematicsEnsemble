@@ -138,6 +138,8 @@ npm run dev:ui
 
 The page lets you save/load configs (localStorage + JSON import/export) and run batch mode.
 
+Then open the printed URL (default is `http://127.0.0.1:3210/`; if the port is busy it will try `3211`, `3212`, etc.).
+
 ## Offline (no server)
 
 Open offline.html directly in your browser. It does not run anything; it generates a config JSON and copy/paste commands for PowerShell and cmd.exe.
@@ -159,6 +161,8 @@ node dist/index.js run --config ai-schematics.config.example.json --outdir runs_
 ```
 
 - UI server: start the local server, then open the printed URL.
+
+  Default is `http://127.0.0.1:3210/`; if the port is busy it will try `3211`, `3212`, etc.
 
 ```powershell
 npm run build
