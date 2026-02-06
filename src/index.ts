@@ -575,7 +575,7 @@ program
           answers: fanoutAnswers,
         });
 
-        const ensemble = await askClaude(ensemblePrompt, models.ensemble, 2400, baselineImage);
+        const ensemble = await askClaude(ensemblePrompt, models.ensemble, 4800, baselineImage);
 
         if (opts.save) {
           const dir = await ensureRunDir();

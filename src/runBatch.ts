@@ -253,7 +253,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     answers,
   });
 
-  const ensemble = await askClaude(ensemblePrompt, opts.claudeModel ?? "claude-sonnet-4-5-20250929", 2400, baselineImage);
+  const ensemble = await askClaude(ensemblePrompt, opts.claudeModel ?? "claude-sonnet-4-5-20250929", 4800, baselineImage);
   await writeText(path.join(runDir, "ensemble_raw.txt"), ensemble.text || ensemble.error || "");
 
   if (ensemble.error || !ensemble.text) {

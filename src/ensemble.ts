@@ -51,7 +51,7 @@ HARD REQUIREMENTS:
 
 OUTPUT FORMAT (MUST match exactly):
 ${TAG_MD_OPEN}
-(Markdown report. Use headings/bullets.)
+(Markdown report. Use headings/bullets. Keep it concise (target <= 400-600 words) so there is room for the SPICE netlist + JSON.)
 ${TAG_MD_CLOSE}
 
 ${TAG_SPICE_OPEN}
