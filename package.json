@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Multi-LLM fanout + Claude ensembling for circuit recommendations (bedini, babcock, half wave bridge), with SPICE netlist + connectivity diagram + Word report outputs.",
+  "description": "Multi-LLM fanout + Claude ensembling for circuit/schematic recommendations, with SPICE netlist + connectivity diagram + Word report outputs.",
   "main": "dist/index.js",
   "bin": {
     "ai-schematics-ensemble": "dist/index.js"
@@ -20,7 +20,7 @@
     "ui:watch": "concurrently -n build,ui -c cyan,green \"npm:build:watch\" \"node --watch dist/index.js ui --no-open\"",
     "dev:ui:watch": "npm run ui:watch",
     "dev:ui": "node --loader ts-node/esm src/index.ts ui",
-    "run:example": "node dist/index.js run --question examples/question.md --baseline-netlist examples/babcock_baseline.cir"
+    "run:example": "node dist/index.js run --question examples/question.md"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.71.2",

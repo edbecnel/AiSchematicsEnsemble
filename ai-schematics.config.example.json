@@ -1,6 +1,6 @@
 {
   "questionPath": "examples/question.md",
-  "baselineNetlistPath": "examples/babcock_baseline.cir",
+  "baselineNetlistPath": "",
   "baselineImagePath": "",
   "bundleIncludes": false,
   "outdir": "runs",

@@ -145,7 +145,7 @@ const program = new Command();
 
 program
   .name("ai-schematics-ensemble")
-  .description("Multi-LLM fanout + Claude ensembling for bedini, babcock, half wave bridge circuits.")
+  .description("Multi-LLM fanout + Claude ensembling for circuit/schematic recommendations.")
   .version("0.1.0");
 
 program

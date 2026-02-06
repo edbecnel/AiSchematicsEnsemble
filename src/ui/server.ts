@@ -296,7 +296,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
           <label>Baseline netlist</label>
           <div>
             <div style="display:flex; gap:8px; align-items:center;">
-              <input id="baselineNetlistPath" type="text" value="examples/babcock_baseline.cir" placeholder="examples/babcock_baseline.cir (optional)" />
+              <input id="baselineNetlistPath" type="text" value="" placeholder="(optional)" />
               <label class="btnLike" id="baselineNetlistBrowseBtn" for="baselineNetlistFile" title="Browse">...</label>
               <button type="button" id="baselineNetlistClearBtn" title="Clear" style="padding: 8px 10px;">✕</button>
               <input id="baselineNetlistFile" type="file" accept=".cir,.sp,.lib,.txt,text/plain" style="position:absolute; left:-10000px; width:1px; height:1px; opacity:0" />
@@ -421,7 +421,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
 
   const DEFAULTS = ${safeJson({
     questionPath: "examples/question.md",
-    baselineNetlistPath: "examples/babcock_baseline.cir",
+    baselineNetlistPath: "",
     baselineImagePath: "",
     outdir: args.defaultOutdir,
     bundleIncludes: false,

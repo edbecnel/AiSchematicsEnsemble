@@ -33,7 +33,7 @@ export function buildEnsemblePrompt(args: {
 
   return `You are an expert electrical engineer + experimentalist.
 Your job is to ensemble multiple AI outputs into a single careful recommendation.
-  We are working on bedini, babcock, half wave bridge circuits; focus on testable advice.
+  We are working on arbitrary electrical circuits/schematics; focus on testable advice.
 
 QUESTION:
 ${args.question.trim()}

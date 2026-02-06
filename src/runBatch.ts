@@ -389,7 +389,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
   const reportDocx = path.join(runDir, "report.docx");
   await writeReportDocx({
     outPath: reportDocx,
-    title: "bedini, babcock, half wave bridge — Ensemble Report",
+    title: "AI Schematics — Ensemble Report",
     question,
     finalMarkdown: out.finalMarkdown,
     spiceNetlist: out.spiceNetlist,

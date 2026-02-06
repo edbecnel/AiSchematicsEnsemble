@@ -1,6 +1,6 @@
 # AiSchematicsEnsemble (v0.1)
 
-Multi-LLM fanout + ensembling CLI for bedini, babcock, half wave bridge circuit recommendations.
+Multi-LLM fanout + ensembling CLI for circuit/schematic recommendations.
 
 If you just want to use the tool (inputs/outputs + examples), see **Help.md** (or open **help.html** for a browser-friendly version).
 
