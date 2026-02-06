@@ -350,10 +350,21 @@
               <td>Good for generating commands and downloading JSON.</td>
               <td>
                 There is no backend, so uploads and “Load from .env” won’t work.
-                To avoid pasting full paths, use the file pickers and then
-                <strong>download the JSON config</strong> (the files are
-                embedded into the config). Run the
-                <strong>JSON-config command</strong>.
+                To avoid pasting full paths, either:
+                <ul>
+                  <li>
+                    Use the file pickers and then
+                    <strong>download the JSON config</strong> (by default the
+                    picked files are embedded into the config). Run the
+                    <strong>JSON-config command</strong>.
+                  </li>
+                  <li>
+                    Or enable <strong>Prefer filename only</strong> (don’t
+                    embed) if your files are hosted alongside
+                    <code>offline.html</code> (or you know the CLI will be able
+                    to read them by the resulting relative path).
+                  </li>
+                </ul>
               </td>
             </tr>
             <tr>
@@ -362,7 +373,8 @@
               <td>
                 Browsers do not reveal full local file paths to JavaScript. Use
                 the file pickers + download JSON config (embedded files), or
-                paste a real path if you want an explicit-params command.
+                enable <strong>Prefer filename only</strong> to fill in just the
+                filename, or paste a real path if you want full control.
               </td>
             </tr>
           </tbody>
@@ -469,12 +481,26 @@
               </td>
             </tr>
             <tr>
+              <td><strong>Prefer filename only</strong></td>
+              <td>
+                When enabled, file picking fills the path textbox with the
+                filename instead of embedding bytes into the JSON config.
+              </td>
+              <td>
+                This can make the explicit-params command available, but it only
+                works if the file will exist at that path when you run the CLI.
+              </td>
+            </tr>
+            <tr>
               <td><strong>Browse “…”</strong> (file picker)</td>
               <td>Selects a local file for convenience.</td>
               <td>
                 If served by the local UI server, the file is uploaded and the
-                path becomes a real server path. Otherwise you’ll likely need to
-                paste a real path manually.
+                path becomes a real server path. Without a server (GitHub Pages
+                or <code>file://</code>), offline.html either embeds the picked
+                file into the JSON config (default) or uses filename-only if the
+                file appears reachable next to the page or you enabled
+                <strong>Prefer filename only</strong>.
               </td>
             </tr>
             <tr>
@@ -639,12 +665,14 @@
           </li>
           <li>
             <strong>File picker only shows a filename</strong>: this is expected
-            in <code>file://</code> mode. Paste the full path manually.
+            in <code>file://</code> mode. You can paste a full path manually, or
+            use “Download JSON” (embedded inputs), or enable “Prefer filename
+            only” if you want the textbox to stay as a simple filename.
           </li>
           <li>
             <strong>Upload failed</strong> when hosted online: GitHub Pages has
             no backend endpoints (<code>/api/upload</code>), so uploads cannot
-            work. Paste paths manually.
+            work. Use “Download JSON” (embedded inputs) or paste paths manually.
           </li>
           <li>
             <strong>“Save to browser” fails</strong>: your browser may be

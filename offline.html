@@ -381,6 +381,22 @@
             />
           </div>
 
+          <div class="row">
+            <label for="preferFilenameOnly">Prefer filename only</label>
+            <div>
+              <label
+                style="display: inline-flex; gap: 8px; align-items: center"
+              >
+                <input id="preferFilenameOnly" type="checkbox" />
+                Don’t embed browsed files into JSON
+              </label>
+              <div class="hint">
+                Uses just the filename/path text box. Make sure the file exists
+                relative to where you run the CLI.
+              </div>
+            </div>
+          </div>
+
           <div
             style="
               display: flex;
@@ -694,6 +710,8 @@
       const THEME_KEY = "ai-schematics-theme-v1";
       const KEY = "ai-schematics-offline-config-v1";
       const KEYS_KEY = "ai-schematics-offline-keys-v1";
+      const PREF_FILENAME_ONLY_KEY =
+        "ai-schematics-offline-prefer-filename-only-v1";
 
       const els = {
         questionPath: document.getElementById("questionPath"),
@@ -716,6 +734,7 @@
         ),
         outdir: document.getElementById("outdir"),
         bundleIncludes: document.getElementById("bundleIncludes"),
+        preferFilenameOnly: document.getElementById("preferFilenameOnly"),
         openaiModel: document.getElementById("openaiModel"),
         grokModel: document.getElementById("grokModel"),
         geminiModel: document.getElementById("geminiModel"),
@@ -822,6 +841,30 @@
         baselineNetlist: { text: "", filename: "" },
         baselineImage: { base64: "", mimeType: "", filename: "" },
       };
+
+      function loadPreferFilenameOnly() {
+        if (!els.preferFilenameOnly) return false;
+        try {
+          const v = localStorage.getItem(PREF_FILENAME_ONLY_KEY);
+          const on = v === "1" || v === "true" || v === "yes";
+          els.preferFilenameOnly.checked = on;
+          return on;
+        } catch {
+          els.preferFilenameOnly.checked = false;
+          return false;
+        }
+      }
+
+      function savePreferFilenameOnly(on) {
+        if (!els.preferFilenameOnly) return;
+        const v = Boolean(on);
+        try {
+          if (v) localStorage.setItem(PREF_FILENAME_ONLY_KEY, "1");
+          else localStorage.removeItem(PREF_FILENAME_ONLY_KEY);
+        } catch {
+          // ignore
+        }
+      }
 
       function clearEmbedded(kind) {
         if (kind === "question") {
@@ -1092,9 +1135,73 @@
           return;
         }
 
+        async function sameDirFileSeemsReachableByName(fileName) {
+          const name = clean(fileName);
+          if (!name) return false;
+          // Only attempt this for basenames (no paths). This is meant to detect
+          // files sitting next to offline.html.
+          if (/[\\/]/g.test(name)) return false;
+          try {
+            const u = new URL(name, location.href);
+            try {
+              const head = await fetch(String(u), {
+                method: "HEAD",
+                cache: "no-store",
+              });
+              if (head && head.ok) return true;
+            } catch {
+              // Some environments (notably file://) may not support HEAD.
+            }
+
+            const get = await fetch(String(u), {
+              method: "GET",
+              cache: "no-store",
+            });
+            return Boolean(get && get.ok);
+          } catch {
+            return false;
+          }
+        }
+
         // Hosted/static mode: browsers won't give us a usable full local path.
         // Instead, embed the file contents into the JSON config so the CLI can run from that config.
         try {
+          // If a file with the same name is reachable next to this page (e.g. opened as file://
+          // and the input sits beside offline.html, or hosted on GitHub Pages), prefer using
+          // just the filename instead of embedding bytes into the JSON config.
+          if (await sameDirFileSeemsReachableByName(f.name)) {
+            clearEmbedded(kind);
+            setPathBoxMode(pathEl, "path");
+            pathEl.value = f.name;
+            setPickedHint(
+              hintEl,
+              "Picked: " + f.name + " (using filename only)",
+            );
+            setStatus(
+              "ok",
+              "Using filename only (file appears reachable next to this page).",
+            );
+            updatePreview();
+            return;
+          }
+
+          // User override: prefer filename-only even if we can't verify the file exists next to the page.
+          if (els.preferFilenameOnly && els.preferFilenameOnly.checked) {
+            clearEmbedded(kind);
+            setPathBoxMode(pathEl, "path");
+            pathEl.value = f.name;
+            setPickedHint(
+              hintEl,
+              "Picked: " + f.name + " (filename only — not embedded)",
+            );
+            setStatus(
+              "warn",
+              "Using filename only because the toggle is on. Ensure the file exists relative to where you run the CLI.",
+            );
+            updatePreview();
+            return;
+          }
+
           clearEmbedded(kind);
           if (kind === "baselineImage") {
             const ab = await f.arrayBuffer();
@@ -2008,6 +2115,14 @@
       if (headerEls.themeSelect) {
         headerEls.themeSelect.addEventListener("change", () => {
           saveTheme(headerEls.themeSelect.value);
+        });
+      }
+
+      // Preferences
+      loadPreferFilenameOnly();
+      if (els.preferFilenameOnly) {
+        els.preferFilenameOnly.addEventListener("change", () => {
+          savePreferFilenameOnly(els.preferFilenameOnly.checked);
         });
       }
 
