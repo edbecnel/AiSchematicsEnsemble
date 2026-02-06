@@ -122,13 +122,16 @@ Notes:
 - File paths you type into the UI are resolved by the server process, relative to the server’s current working directory.
 - The UI can download `final.md`, `final.cir`, and `report.docx`, and can open the run folder in Explorer.
 
+Tip: the UI’s “Copy/paste commands” section can generate both batch (`run`) and interactive chat (`chat`) commands.
+
 ## Offline mode (no server)
 
 Open offline.html directly in your browser. It does not run the tool; it helps you:
 
 - Fill out inputs/models
 - Download a config JSON
-- Copy a ready-to-paste command line for PowerShell or cmd.exe
+- Copy a ready-to-paste command line for PowerShell or cmd.exe (batch mode)
+- Generate an interactive chat command (CLI `chat`) using the same baseline + model settings
 
 Then run the saved JSON config with:
 

@@ -312,50 +312,6 @@
 
     <!-- Embedded markdown source (from Help.md) -->
     <textarea id="help-md" style="display: none">
-    <script>
-      (function () {
-        const THEME_KEY = "ai-schematics-theme-v1";
-        const sel = document.getElementById("themeSelect");
-
-        function apply(choice) {
-          const c = String(choice || "").toLowerCase();
-          if (c === "dark" || c === "light") {
-            document.documentElement.dataset.theme = c;
-          } else {
-            try {
-              delete document.documentElement.dataset.theme;
-            } catch {
-              document.documentElement.removeAttribute("data-theme");
-            }
-          }
-        }
-
-        function load() {
-          let saved = "system";
-          try {
-            saved = localStorage.getItem(THEME_KEY) || "system";
-          } catch {
-            saved = "system";
-          }
-          if (sel) sel.value = saved;
-          apply(saved);
-        }
-
-        function save(choice) {
-          const c = String(choice || "system").toLowerCase();
-          try {
-            if (c === "dark" || c === "light") localStorage.setItem(THEME_KEY, c);
-            else localStorage.removeItem(THEME_KEY);
-          } catch {
-            // ignore
-          }
-          apply(c);
-        }
-
-        load();
-        if (sel) sel.addEventListener("change", () => save(sel.value));
-      })();
-    </script>
 # AiSchematicsEnsemble — End-user Help
 
 This document is for using the tool (inputs/outputs + interactive usage). For developer notes, see README.
@@ -480,13 +436,16 @@ Notes:
 - File paths you type into the UI are resolved by the server process, relative to the server’s current working directory.
 - The UI can download `final.md`, `final.cir`, and `report.docx`, and can open the run folder in Explorer.
 
+Tip: the UI’s “Copy/paste commands” section can generate both batch (`run`) and interactive chat (`chat`) commands.
+
 ## Offline mode (no server)
 
 Open offline.html directly in your browser. It does not run the tool; it helps you:
 
 - Fill out inputs/models
 - Download a config JSON
-- Copy a ready-to-paste command line for PowerShell or cmd.exe
+- Copy a ready-to-paste command line for PowerShell or cmd.exe (batch mode)
+- Generate an interactive chat command (CLI `chat`) using the same baseline + model settings
 
 Then run the saved JSON config with:
 

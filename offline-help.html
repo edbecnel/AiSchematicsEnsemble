@@ -253,7 +253,7 @@
             <li><a href="#paths">Understanding file paths</a></li>
             <li><a href="#controls">UI controls (what each one does)</a></li>
             <li><a href="#keys">API keys modal</a></li>
-            <li><a href="#commands">Command preview (A vs B)</a></li>
+            <li><a href="#commands">Command preview (A/B/C)</a></li>
             <li><a href="#troubleshooting">Troubleshooting</a></li>
             <li><a href="#faq">FAQ</a></li>
           </ul>
@@ -571,10 +571,10 @@
           <a href="cli-help.html">cli-help.html</a>.
         </div>
 
-        <h2 id="commands">Command preview: option A vs option B</h2>
+        <h2 id="commands">Command preview: options A/B/C</h2>
         <p>
-          The right-hand card shows two ways to run the exact same
-          configuration.
+          The right-hand card shows multiple ways to use the same inputs/models
+          from this page.
         </p>
         <ul>
           <li>
@@ -585,6 +585,12 @@
           <li>
             <strong>B) Run using explicit parameters</strong> spells out every
             flag. This is useful when you don’t want to manage a config file.
+          </li>
+          <li>
+            <strong>C) Interactive chat</strong> runs the CLI REPL (<code
+              >node dist/index.js chat</code
+            >) so you can ask questions and optionally save a transcript with
+            <code>--save</code>.
           </li>
         </ul>
         <p>
