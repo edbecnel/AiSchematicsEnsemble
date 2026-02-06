@@ -8,3 +8,6 @@ runs*/
 
 # Locally downloaded/generated configs (keep ai-schematics.config.example.json tracked)
 ai-schematics.config.*.json
+ai-schematics.config.json
+config/ai-schematics.config.json
+config/ai-schematics.config.*.json

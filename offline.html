@@ -128,6 +128,13 @@
         background: var(--field-bg);
         color: inherit;
       }
+      input[type="text"].subduedPath {
+        color: var(--muted);
+        opacity: 0.85;
+      }
+      input[type="text"].subduedPath[readonly] {
+        cursor: default;
+      }
       textarea {
         width: 100%;
         min-width: 0;
@@ -837,22 +844,46 @@
         return btoa(binary);
       }
 
+      function setPathBoxMode(pathEl, mode, displayValue) {
+        // mode: 'path' (editable, real path) | 'embedded' (read-only, display-only filename)
+        if (mode === "embedded") {
+          pathEl.readOnly = true;
+          pathEl.classList.add("subduedPath");
+          pathEl.value = displayValue || pathEl.value || "";
+          pathEl.dataset.embeddedDisplay = "1";
+        } else {
+          pathEl.readOnly = false;
+          pathEl.classList.remove("subduedPath");
+          delete pathEl.dataset.embeddedDisplay;
+        }
+      }
+
       function asBool(s) {
         const t = clean(s).toLowerCase();
         return t === "true" || t === "1" || t === "yes" || t === "y";
       }
 
       function getConfig() {
+        const hasEmbeddedQuestion = !!embedded.question.text;
+        const hasEmbeddedBaselineNetlist = !!embedded.baselineNetlist.text;
+        const hasEmbeddedBaselineImage =
+          !!embedded.baselineImage.base64 && !!embedded.baselineImage.mimeType;
+
         const cfg = {
-          questionPath: clean(els.questionPath.value) || undefined,
+          questionPath: hasEmbeddedQuestion
+            ? undefined
+            : clean(els.questionPath.value) || undefined,
           questionText: embedded.question.text || undefined,
           questionFilename: embedded.question.filename || undefined,
-          baselineNetlistPath:
-            clean(els.baselineNetlistPath.value) || undefined,
+          baselineNetlistPath: hasEmbeddedBaselineNetlist
+            ? undefined
+            : clean(els.baselineNetlistPath.value) || undefined,
           baselineNetlistText: embedded.baselineNetlist.text || undefined,
           baselineNetlistFilename:
             embedded.baselineNetlist.filename || undefined,
-          baselineImagePath: clean(els.baselineImagePath.value) || undefined,
+          baselineImagePath: hasEmbeddedBaselineImage
+            ? undefined
+            : clean(els.baselineImagePath.value) || undefined,
           baselineImage:
             embedded.baselineImage.base64 && embedded.baselineImage.mimeType
               ? {
@@ -1001,6 +1032,7 @@
             .then((j) => {
               const saved = String(j?.path || "");
               if (!saved) throw new Error("Upload response missing path");
+              setPathBoxMode(pathEl, "path");
               pathEl.value = saved;
               setPickedHint(hintEl, "Picked: " + f.name + " (uploaded)");
               setStatus("ok", "Uploaded. (Snapshot — re-upload after edits.)");
@@ -1014,6 +1046,7 @@
                 const j2 = await uploadToServerRaw(f, kind);
                 const saved2 = String(j2?.path || "");
                 if (!saved2) throw new Error("Upload response missing path");
+                setPathBoxMode(pathEl, "path");
                 pathEl.value = saved2;
                 setPickedHint(hintEl, "Picked: " + f.name + " (uploaded)");
                 setStatus(
@@ -1024,6 +1057,7 @@
                 return;
               } catch (e2) {
                 // Final fallback to filename
+                setPathBoxMode(pathEl, "path");
                 pathEl.value = f.name;
                 setPickedHint(
                   hintEl,
@@ -1048,6 +1082,7 @@
         // Hosted/static mode: browsers won't give us a usable full local path.
         // Instead, embed the file contents into the JSON config so the CLI can run from that config.
         try {
+          clearEmbedded(kind);
           if (kind === "baselineImage") {
             const ab = await f.arrayBuffer();
             embedded.baselineImage.base64 = arrayBufferToBase64(ab);
@@ -1055,7 +1090,7 @@
               f.type || "application/octet-stream",
             );
             embedded.baselineImage.filename = f.name || "baseline_schematic";
-            pathEl.value = "";
+            setPathBoxMode(pathEl, "embedded", f.name);
             setPickedHint(
               hintEl,
               "Picked: " + f.name + " (embedded in JSON config)",
@@ -1069,7 +1104,7 @@
               embedded.baselineNetlist.text = text;
               embedded.baselineNetlist.filename = f.name || "baseline.cir";
             }
-            pathEl.value = "";
+            setPathBoxMode(pathEl, "embedded", f.name);
             setPickedHint(
               hintEl,
               "Picked: " + f.name + " (embedded in JSON config)",
@@ -1082,6 +1117,7 @@
           );
         } catch (e) {
           // Fallback: filename only
+          setPathBoxMode(pathEl, "path");
           pathEl.value = f.name;
           setPickedHint(
             hintEl,
@@ -1098,14 +1134,20 @@
 
       function clearPicked(kind) {
         if (kind === "question") {
+          clearEmbedded(kind);
+          setPathBoxMode(els.questionPath, "path");
           els.questionPath.value = "";
           if (els.questionFile) els.questionFile.value = "";
           setPickedHint(els.questionPickedHint, "");
         } else if (kind === "baselineNetlist") {
+          clearEmbedded(kind);
+          setPathBoxMode(els.baselineNetlistPath, "path");
           els.baselineNetlistPath.value = "";
           if (els.baselineNetlistFile) els.baselineNetlistFile.value = "";
           setPickedHint(els.baselineNetlistPickedHint, "");
         } else {
+          clearEmbedded(kind);
+          setPathBoxMode(els.baselineImagePath, "path");
           els.baselineImagePath.value = "";
           if (els.baselineImageFile) els.baselineImageFile.value = "";
           setPickedHint(els.baselineImagePickedHint, "");
@@ -1585,15 +1627,31 @@
         const cfg = getConfig();
         const fname =
           clean(els.configFilename.value) || "ai-schematics.config.json";
+        // Browsers won't download into subfolders via the download attribute.
+        // If the user enters a relative path (e.g. config\file.json), download just the basename.
+        const downloadName =
+          fname
+            .split(/[/\\]+/g)
+            .filter(Boolean)
+            .slice(-1)[0] || fname;
         const blob = new Blob([JSON.stringify(cfg, null, 2)], {
           type: "application/json",
         });
         const a = document.createElement("a");
         a.href = URL.createObjectURL(blob);
-        a.download = fname;
+        a.download = downloadName;
         a.click();
         URL.revokeObjectURL(a.href);
-        setStatus("ok", "Downloaded JSON config: " + fname);
+        setStatus(
+          "ok",
+          "Downloaded JSON config: " +
+            downloadName +
+            (downloadName !== fname
+              ? " (Note: browsers can't save into subfolders; move it to: " +
+                fname +
+                ")"
+              : ""),
+        );
       }
 
       function saveLocal() {
@@ -1623,9 +1681,69 @@
           return setStatus("warn", "No saved config found in this browser.");
         try {
           const cfg = JSON.parse(raw);
-          els.questionPath.value = cfg.questionPath || "";
-          els.baselineNetlistPath.value = cfg.baselineNetlistPath || "";
-          els.baselineImagePath.value = cfg.baselineImagePath || "";
+
+          // Restore embedded inputs (if present) and show filenames as display-only values.
+          if (cfg.questionText) {
+            embedded.question.text = String(cfg.questionText || "");
+            embedded.question.filename = String(
+              cfg.questionFilename || "question.md",
+            );
+            setPathBoxMode(
+              els.questionPath,
+              "embedded",
+              embedded.question.filename,
+            );
+          } else {
+            clearEmbedded("question");
+            setPathBoxMode(els.questionPath, "path");
+            els.questionPath.value = cfg.questionPath || "";
+          }
+
+          if (cfg.baselineNetlistText) {
+            embedded.baselineNetlist.text = String(
+              cfg.baselineNetlistText || "",
+            );
+            embedded.baselineNetlist.filename = String(
+              cfg.baselineNetlistFilename || "baseline.cir",
+            );
+            setPathBoxMode(
+              els.baselineNetlistPath,
+              "embedded",
+              embedded.baselineNetlist.filename,
+            );
+          } else {
+            clearEmbedded("baselineNetlist");
+            setPathBoxMode(els.baselineNetlistPath, "path");
+            els.baselineNetlistPath.value = cfg.baselineNetlistPath || "";
+          }
+
+          if (
+            cfg.baselineImage &&
+            cfg.baselineImage.base64 &&
+            cfg.baselineImage.mimeType
+          ) {
+            embedded.baselineImage.base64 = String(
+              cfg.baselineImage.base64 || "",
+            );
+            embedded.baselineImage.mimeType = String(
+              cfg.baselineImage.mimeType || "",
+            );
+            embedded.baselineImage.filename = String(
+              cfg.baselineImage.filename ||
+                cfg.baselineImageFilename ||
+                "baseline_schematic",
+            );
+            setPathBoxMode(
+              els.baselineImagePath,
+              "embedded",
+              embedded.baselineImage.filename,
+            );
+          } else {
+            clearEmbedded("baselineImage");
+            setPathBoxMode(els.baselineImagePath, "path");
+            els.baselineImagePath.value = cfg.baselineImagePath || "";
+          }
+
           els.outdir.value = cfg.outdir || "runs";
           els.bundleIncludes.value = String(Boolean(cfg.bundleIncludes));
           els.openaiModel.value = cfg.openaiModel || "";
@@ -1657,9 +1775,66 @@
       async function importJson(file) {
         const text = await file.text();
         const cfg = JSON.parse(text);
-        els.questionPath.value = cfg.questionPath || "";
-        els.baselineNetlistPath.value = cfg.baselineNetlistPath || "";
-        els.baselineImagePath.value = cfg.baselineImagePath || "";
+
+        if (cfg.questionText) {
+          embedded.question.text = String(cfg.questionText || "");
+          embedded.question.filename = String(
+            cfg.questionFilename || "question.md",
+          );
+          setPathBoxMode(
+            els.questionPath,
+            "embedded",
+            embedded.question.filename,
+          );
+        } else {
+          clearEmbedded("question");
+          setPathBoxMode(els.questionPath, "path");
+          els.questionPath.value = cfg.questionPath || "";
+        }
+
+        if (cfg.baselineNetlistText) {
+          embedded.baselineNetlist.text = String(cfg.baselineNetlistText || "");
+          embedded.baselineNetlist.filename = String(
+            cfg.baselineNetlistFilename || "baseline.cir",
+          );
+          setPathBoxMode(
+            els.baselineNetlistPath,
+            "embedded",
+            embedded.baselineNetlist.filename,
+          );
+        } else {
+          clearEmbedded("baselineNetlist");
+          setPathBoxMode(els.baselineNetlistPath, "path");
+          els.baselineNetlistPath.value = cfg.baselineNetlistPath || "";
+        }
+
+        if (
+          cfg.baselineImage &&
+          cfg.baselineImage.base64 &&
+          cfg.baselineImage.mimeType
+        ) {
+          embedded.baselineImage.base64 = String(
+            cfg.baselineImage.base64 || "",
+          );
+          embedded.baselineImage.mimeType = String(
+            cfg.baselineImage.mimeType || "",
+          );
+          embedded.baselineImage.filename = String(
+            cfg.baselineImage.filename ||
+              cfg.baselineImageFilename ||
+              "baseline_schematic",
+          );
+          setPathBoxMode(
+            els.baselineImagePath,
+            "embedded",
+            embedded.baselineImage.filename,
+          );
+        } else {
+          clearEmbedded("baselineImage");
+          setPathBoxMode(els.baselineImagePath, "path");
+          els.baselineImagePath.value = cfg.baselineImagePath || "";
+        }
+
         els.outdir.value = cfg.outdir || "runs";
         els.bundleIncludes.value = String(Boolean(cfg.bundleIncludes));
         els.openaiModel.value = cfg.openaiModel || "";
@@ -1671,6 +1846,10 @@
       }
 
       els.updateBtn.addEventListener("click", updatePreview);
+      if (els.configFilename) {
+        els.configFilename.addEventListener("input", updatePreview);
+        els.configFilename.addEventListener("change", updatePreview);
+      }
       els.saveLocalBtn.addEventListener("click", saveLocal);
       els.loadLocalBtn.addEventListener("click", loadLocal);
       els.clearLocalBtn.addEventListener("click", clearLocal);

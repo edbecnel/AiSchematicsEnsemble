@@ -997,7 +997,8 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     const fname = (els.configFilename?.value || '').trim() || 'ai-schematics.config.json';
-    a.download = fname;
+    const downloadName = fname.split(/[/\\]+/g).filter(Boolean).slice(-1)[0] || fname;
+    a.download = downloadName;
     a.click();
     URL.revokeObjectURL(a.href);
     updateCommandPreview();
