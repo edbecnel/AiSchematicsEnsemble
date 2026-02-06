@@ -150,7 +150,7 @@ program
 
 program
   .command("run")
-  .description("Run fanout + ensemble, producing report.docx, final.cir, schematic.dot/png.")
+  .description("Run fanout + ensemble, producing report.docx, final.cir, schematic.dot/png/svg.")
   .option("--config <path>", "JSON config file containing run options")
   .option("--question <path>", "Markdown/text file with the question/prompt")
   .option("--baseline-netlist <path>", "Optional SPICE netlist representing current baseline circuit")
@@ -196,7 +196,11 @@ program
       console.log(`- ${result.outputs.reportDocx}`);
       console.log(`- ${result.outputs.finalCir}`);
       console.log(`- ${result.outputs.finalMd}`);
-      console.log(`- ${result.outputs.schematicDot}${result.outputs.schematicPng ? " + schematic.png" : ""}`);
+      const schematicLine =
+        `- ${result.outputs.schematicDot}` +
+        (result.outputs.schematicPng ? " + schematic.png" : "") +
+        (result.outputs.schematicSvg ? " + schematic.svg" : "");
+      console.log(schematicLine);
       if (result.outputs.baselineImage) console.log(`- ${result.outputs.baselineImage}`);
     } catch (e: any) {
       console.error(chalk.red(String(e?.message ?? e)));

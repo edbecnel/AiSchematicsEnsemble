@@ -40,6 +40,7 @@ export type RunBatchResult = {
     finalMd: string;
     schematicDot: string;
     schematicPng?: string;
+    schematicSvg?: string;
     baselineCir?: string;
     baselineOriginalCir?: string;
     baselineIncludesJson?: string;
@@ -318,6 +319,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
   // Connectivity diagram
   logger.info("Generating connectivity diagram...");
   let schematicPng: string | undefined;
+  let schematicSvg: string | undefined;
   const schematicDot = path.join(runDir, "schematic.dot");
   try {
     const finalNetlist = out.spiceNetlist || "";
@@ -353,12 +355,30 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     await writeText(schematicDot, dot);
 
     const pngPath = path.join(runDir, "schematic.png");
+    const svgPath = path.join(runDir, "schematic.svg");
     try {
       await execa("dot", ["-Tpng", schematicDot, "-o", pngPath]);
       schematicPng = pngPath;
       logger.info("Rendered schematic.png via Graphviz.");
-    } catch {
-      logger.warn("Graphviz 'dot' not found; wrote schematic.dot only.");
+    } catch (e: any) {
+      if (String(e?.code ?? "") === "ENOENT") {
+        logger.warn("Graphviz 'dot' not found; wrote schematic.dot only.");
+      } else {
+        logger.warn("Graphviz failed to render schematic.png; wrote schematic.dot only.");
+      }
+    }
+
+    // SVG is ideal for zooming/printing.
+    if (schematicPng || schematicNetlist.trim()) {
+      try {
+        await execa("dot", ["-Tsvg", schematicDot, "-o", svgPath]);
+        schematicSvg = svgPath;
+        logger.info("Rendered schematic.svg via Graphviz.");
+      } catch (e: any) {
+        if (String(e?.code ?? "") !== "ENOENT") {
+          logger.warn("Graphviz failed to render schematic.svg; continuing.");
+        }
+      }
     }
   } catch (e: any) {
     logger.warn(`Schematic generation skipped: ${String(e?.message ?? e)}`);
@@ -387,6 +407,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
       finalMd,
       schematicDot,
       schematicPng,
+      schematicSvg,
       baselineCir,
       baselineOriginalCir,
       baselineIncludesJson,
