@@ -401,6 +401,10 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
           <button id="copyChatPsBtn">Copy chat cmd (PowerShell)</button>
           <button id="copyChatCmdBtn">Copy chat cmd (cmd.exe)</button>
         </div>
+        <div id="uploadSnapshotWarn" class="hint" style="margin-top:10px; display:none; color:#b45309;">
+          Note: one or more inputs point into <span class="mono">.ui_uploads</span> (uploaded snapshots). If you edit your original files,
+          re-upload (pick them again) or paste the real source paths.
+        </div>
         <pre id="cmdPreview"></pre>
       </div>
 
@@ -490,6 +494,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     chatMaxHistory: document.getElementById('chatMaxHistory'),
     chatSave: document.getElementById('chatSave'),
     cmdPreview: document.getElementById('cmdPreview'),
+    uploadSnapshotWarn: document.getElementById('uploadSnapshotWarn'),
     status: document.getElementById('status'),
     log: document.getElementById('log'),
     runBtn: document.getElementById('runBtn'),
@@ -522,10 +527,11 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     restoreBtn: document.getElementById('restoreBtn'),
   };
 
-  async function uploadPickedFile(file) {
+  async function uploadPickedFile(file, kind) {
     const fd = new FormData();
     fd.append('file', file, file.name);
-    const resp = await fetch('/api/upload', { method: 'POST', body: fd });
+    const url = '/api/upload?kind=' + encodeURIComponent(String(kind || ''));
+    const resp = await fetch(url, { method: 'POST', body: fd });
     const data = await resp.json();
     if (!resp.ok) throw new Error(data?.error || ('HTTP ' + resp.status));
     if (!data?.path) throw new Error('Upload response missing path');
@@ -824,6 +830,22 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
       '  PowerShell: ' + chatPs + '\n' +
       '  cmd.exe:    ' + chatCmd;
 
+    // Show a warning if the config references UI-uploaded snapshot paths.
+    try {
+      const paths = [
+        String(cfg.questionPath || ''),
+        String(cfg.baselineNetlistPath || ''),
+        String(cfg.baselineImagePath || ''),
+      ].filter(Boolean);
+      const hasUploads = paths.some((p) => {
+        const s = String(p).replace(/\\/g, '/').toLowerCase();
+        return s.includes('/.ui_uploads/') || s.startsWith('.ui_uploads/') || s.includes('\\.ui_uploads\\') || s.includes('/.ui_uploads\\');
+      });
+      if (els.uploadSnapshotWarn) els.uploadSnapshotWarn.style.display = hasUploads ? 'block' : 'none';
+    } catch {
+      if (els.uploadSnapshotWarn) els.uploadSnapshotWarn.style.display = 'none';
+    }
+
     els.copyJsonPsBtn.onclick = () => copyText(jsonPs);
     els.copyJsonCmdBtn.onclick = () => copyText(jsonCmd);
     if (els.copyChatPsBtn) els.copyChatPsBtn.onclick = () => copyText(chatPs);
@@ -911,10 +933,10 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
       if (!f) return;
       clientLog('Picked file for ' + kind + ': ' + f.name + ' (' + f.size + ' bytes)');
       setStatus('hint', 'Uploading ' + f.name + '...');
-      const savedPath = await uploadPickedFile(f);
+      const savedPath = await uploadPickedFile(f, kind);
       pathEl.value = savedPath;
       setPickedHint(hintEl, 'Picked: ' + f.name);
-      setStatus('ok', 'Uploaded.');
+      setStatus('ok', 'Uploaded. (Snapshot — re-upload after edits.)');
       clientLog('Uploaded ' + kind + ' -> ' + savedPath);
       updateCommandPreview();
     } catch (e) {
@@ -1241,19 +1263,59 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
       if (method === "POST" && pathname === "/api/upload") {
         try {
           const contentType = String(req.headers["content-type"] ?? "");
+          const u = new URL(req.url || "/api/upload", `http://${String(req.headers.host ?? "localhost")}`);
+          const kind = getSingleQueryParam(u, "kind");
+          const kindBase =
+            kind === "question"
+              ? "question"
+              : kind === "baselineNetlist"
+                ? "baseline_netlist"
+                : kind === "baselineImage"
+                  ? "baseline_image"
+                  : undefined;
+
+          const toUserPath = (absPath: string): string => {
+            try {
+              const rel = path.relative(cwd, absPath);
+              if (!rel || rel.startsWith("..") || path.isAbsolute(rel)) return absPath;
+              return rel;
+            } catch {
+              return absPath;
+            }
+          };
+
           const folder = `${Date.now()}_${crypto.randomUUID()}`;
-          const uploadDir = path.join(uploadRootDir, folder);
+          const uploadDir = path.join(uploadRootDir, "tmp", folder);
 
           // Prefer multipart/form-data, but support a raw-body fallback.
           if (contentType.toLowerCase().startsWith("multipart/form-data")) {
             const received = await parseMultipartSingleFile(req, { uploadDir });
-            sendJson(res, 200, { ok: true, path: received.filePath, filename: received.filename, mimeType: received.mimeType });
+            if (kindBase) {
+              const ext0 = String(path.extname(received.filename || "")).toLowerCase();
+              const ext = ext0 && ext0.length <= 16 ? ext0 : "";
+              const currentDir = path.join(uploadRootDir, "current");
+              await fs.mkdirp(currentDir);
+              const stableAbsPath = path.join(currentDir, `${kindBase}${ext || ".bin"}`);
+              await fs.move(received.filePath, stableAbsPath, { overwrite: true });
+              // Best-effort cleanup of temp dir
+              await fs.remove(uploadDir).catch(() => undefined);
+              sendJson(res, 200, {
+                ok: true,
+                path: toUserPath(stableAbsPath),
+                filename: path.basename(stableAbsPath),
+                mimeType: received.mimeType,
+                originalFilename: received.filename,
+                kind,
+              });
+              return;
+            }
+
+            sendJson(res, 200, { ok: true, path: toUserPath(received.filePath), filename: received.filename, mimeType: received.mimeType, kind });
             return;
           }
 
           // Raw upload fallback: body is file bytes.
           // Client provides the filename via query or x-filename header.
-          const u = new URL(req.url || "/api/upload", `http://${String(req.headers.host ?? "localhost")}`);
           const qName = getSingleQueryParam(u, "filename");
           const hName = String(req.headers["x-filename"] ?? "").trim();
           const requested = qName || hName;
@@ -1263,16 +1325,34 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           }
 
           const safe = sanitizeFileName(requested);
-          await fs.mkdirp(uploadDir);
           const body = await readRequestBody(req);
           if (!body || body.length === 0) {
             sendJson(res, 400, { error: "Empty body" });
             return;
           }
 
+          if (kindBase) {
+            const ext0 = String(path.extname(safe || "")).toLowerCase();
+            const ext = ext0 && ext0.length <= 16 ? ext0 : "";
+            const currentDir = path.join(uploadRootDir, "current");
+            await fs.mkdirp(currentDir);
+            const stableAbsPath = path.join(currentDir, `${kindBase}${ext || ".bin"}`);
+            await fs.writeFile(stableAbsPath, body);
+            sendJson(res, 200, {
+              ok: true,
+              path: toUserPath(stableAbsPath),
+              filename: path.basename(stableAbsPath),
+              mimeType: contentType || "application/octet-stream",
+              originalFilename: safe,
+              kind,
+            });
+            return;
+          }
+
+          await fs.mkdirp(uploadDir);
           const filePath = path.join(uploadDir, safe);
           await fs.writeFile(filePath, body);
-          sendJson(res, 200, { ok: true, path: filePath, filename: safe, mimeType: contentType || "application/octet-stream" });
+          sendJson(res, 200, { ok: true, path: toUserPath(filePath), filename: safe, mimeType: contentType || "application/octet-stream", kind });
         } catch (e: any) {
           sendJson(res, 400, { error: String(e?.message ?? e) });
         }

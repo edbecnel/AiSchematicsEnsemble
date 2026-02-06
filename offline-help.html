@@ -370,8 +370,18 @@
         </ul>
         <div class="note">
           If you use the local UI server, picking a file uploads it and replaces
-          the text box with a server path. That makes the generated command
-          “just work” when run from the project root.
+          the text box with a server path (under <code>.ui_uploads</code>). That
+          makes the generated command “just work” when run from the project
+          root. <br /><br />
+          <strong>Important:</strong> those uploaded paths are a
+          <em>snapshot</em>. If you edit the original file later, the CLI will
+          not see your edits unless you re-upload (pick the file again) or paste
+          a real path to your source file. <br /><br />
+          Newer versions use stable paths like
+          <code>.ui_uploads/current/question.*</code>,
+          <code>.ui_uploads/current/baseline_netlist.*</code>, and
+          <code>.ui_uploads/current/baseline_image.*</code> so that re-uploading
+          updates what previously-copied commands reference.
         </div>
 
         <h2 id="controls">UI controls (what each one does)</h2>
