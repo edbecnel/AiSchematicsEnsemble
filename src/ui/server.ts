@@ -1446,7 +1446,7 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           allowPrompts: false,
         };
 
-        if (!runOpts.questionPath.trim()) {
+        if (!runOpts.questionPath || !runOpts.questionPath.trim()) {
           sendJson(res, 400, { error: "questionPath is required" });
           return;
         }

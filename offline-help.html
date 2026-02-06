@@ -339,15 +339,19 @@
               <td>Good for generating commands and downloading JSON.</td>
               <td>
                 There is no backend, so uploads and “Load from .env” won’t work.
-                Paste paths manually.
+                To avoid pasting full paths, use the file pickers and then
+                <strong>download the JSON config</strong> (the files are
+                embedded into the config). Run the
+                <strong>JSON-config command</strong>.
               </td>
             </tr>
             <tr>
               <td><strong>Direct file open</strong> (<code>file://</code>)</td>
               <td>Good for generating commands.</td>
               <td>
-                Browsers do not reveal full local file paths to JavaScript. File
-                picker will only provide a filename; paste a real path.
+                Browsers do not reveal full local file paths to JavaScript. Use
+                the file pickers + download JSON config (embedded files), or
+                paste a real path if you want an explicit-params command.
               </td>
             </tr>
           </tbody>

@@ -5,8 +5,20 @@ import { z } from "zod";
 const RunConfigSchema = z
   .object({
     questionPath: z.string().optional(),
+    questionText: z.string().optional(),
+    questionFilename: z.string().optional(),
     baselineNetlistPath: z.string().optional(),
+    baselineNetlistText: z.string().optional(),
+    baselineNetlistFilename: z.string().optional(),
     baselineImagePath: z.string().optional(),
+    baselineImage: z
+      .object({
+        mimeType: z.string(),
+        base64: z.string(),
+        filename: z.string().optional(),
+      })
+      .strict()
+      .optional(),
     bundleIncludes: z.boolean().optional(),
     outdir: z.string().optional(),
     openaiModel: z.string().optional(),
@@ -38,10 +50,26 @@ export async function readRunConfig(configPath: string): Promise<RunConfig> {
 
   // Normalize: convert blank strings to undefined.
   const cfg = parsed.data;
+
+  const bi = cfg.baselineImage;
+  const baselineImage =
+    bi && cleanString(bi.mimeType) && cleanString(bi.base64)
+      ? {
+          mimeType: String(bi.mimeType).trim(),
+          base64: String(bi.base64).trim(),
+          filename: cleanString(bi.filename),
+        }
+      : undefined;
+
   return {
     questionPath: cleanString(cfg.questionPath),
+    questionText: cleanString(cfg.questionText),
+    questionFilename: cleanString(cfg.questionFilename),
     baselineNetlistPath: cleanString(cfg.baselineNetlistPath),
+    baselineNetlistText: cleanString(cfg.baselineNetlistText),
+    baselineNetlistFilename: cleanString(cfg.baselineNetlistFilename),
     baselineImagePath: cleanString(cfg.baselineImagePath),
+    baselineImage,
     bundleIncludes: cfg.bundleIncludes,
     outdir: cleanString(cfg.outdir),
     openaiModel: cleanString(cfg.openaiModel),

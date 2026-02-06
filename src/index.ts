@@ -171,17 +171,23 @@ program
       const cfg = opts.config ? await readRunConfig(String(opts.config)) : undefined;
       const merged = cfg ? mergeRunConfig(opts, cfg) : undefined;
       const questionPath = merged?.questionPath ?? String(opts.question ?? "").trim();
+      const questionText = merged?.questionText;
 
-      if (!questionPath) {
-        console.error(chalk.red("Missing required input. Provide either --question <path> or --config <path>."));
+      if (!questionPath && !questionText?.trim()) {
+        console.error(chalk.red("Missing required input. Provide --question <path> or include questionText in --config."));
         process.exitCode = 2;
         return;
       }
 
       const result = await runBatch({
         questionPath,
+        questionText,
+        questionFilename: merged?.questionFilename,
         baselineNetlistPath: merged?.baselineNetlistPath ?? opts.baselineNetlist,
+        baselineNetlistText: merged?.baselineNetlistText,
+        baselineNetlistFilename: merged?.baselineNetlistFilename,
         baselineImagePath: merged?.baselineImagePath ?? opts.baselineImage,
+        baselineImage: merged?.baselineImage,
         bundleIncludes: merged?.bundleIncludes ?? Boolean(opts.bundleIncludes),
         outdir: merged?.outdir ?? opts.outdir,
         openaiModel: merged?.openaiModel ?? opts.openaiModel,

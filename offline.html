@@ -806,16 +806,61 @@
         return t ? t : "";
       }
 
+      const embedded = {
+        question: { text: "", filename: "" },
+        baselineNetlist: { text: "", filename: "" },
+        baselineImage: { base64: "", mimeType: "", filename: "" },
+      };
+
+      function clearEmbedded(kind) {
+        if (kind === "question") {
+          embedded.question.text = "";
+          embedded.question.filename = "";
+        } else if (kind === "baselineNetlist") {
+          embedded.baselineNetlist.text = "";
+          embedded.baselineNetlist.filename = "";
+        } else if (kind === "baselineImage") {
+          embedded.baselineImage.base64 = "";
+          embedded.baselineImage.mimeType = "";
+          embedded.baselineImage.filename = "";
+        }
+      }
+
+      function arrayBufferToBase64(ab) {
+        const bytes = new Uint8Array(ab);
+        let binary = "";
+        const chunkSize = 0x8000;
+        for (let i = 0; i < bytes.length; i += chunkSize) {
+          const chunk = bytes.subarray(i, i + chunkSize);
+          binary += String.fromCharCode.apply(null, Array.from(chunk));
+        }
+        return btoa(binary);
+      }
+
       function asBool(s) {
         const t = clean(s).toLowerCase();
         return t === "true" || t === "1" || t === "yes" || t === "y";
       }
 
       function getConfig() {
-        return {
-          questionPath: clean(els.questionPath.value),
-          baselineNetlistPath: clean(els.baselineNetlistPath.value),
-          baselineImagePath: clean(els.baselineImagePath.value),
+        const cfg = {
+          questionPath: clean(els.questionPath.value) || undefined,
+          questionText: embedded.question.text || undefined,
+          questionFilename: embedded.question.filename || undefined,
+          baselineNetlistPath:
+            clean(els.baselineNetlistPath.value) || undefined,
+          baselineNetlistText: embedded.baselineNetlist.text || undefined,
+          baselineNetlistFilename:
+            embedded.baselineNetlist.filename || undefined,
+          baselineImagePath: clean(els.baselineImagePath.value) || undefined,
+          baselineImage:
+            embedded.baselineImage.base64 && embedded.baselineImage.mimeType
+              ? {
+                  mimeType: embedded.baselineImage.mimeType,
+                  base64: embedded.baselineImage.base64,
+                  filename: embedded.baselineImage.filename || undefined,
+                }
+              : undefined,
           outdir: clean(els.outdir.value),
           bundleIncludes: asBool(els.bundleIncludes.value),
           openaiModel: clean(els.openaiModel.value),
@@ -823,6 +868,7 @@
           geminiModel: clean(els.geminiModel.value),
           claudeModel: clean(els.claudeModel.value),
         };
+        return cfg;
       }
 
       function setStatus(kind, msg) {
@@ -949,6 +995,7 @@
 
         const canUpload = await hasUploadApi();
         if (canUpload) {
+          clearEmbedded(kind);
           setStatus("hint", "Uploading " + f.name + "...");
           uploadToServer(f, kind)
             .then((j) => {
@@ -998,19 +1045,54 @@
           return;
         }
 
-        // No local UI server available (e.g., GitHub Pages) or opened directly (file://):
-        // browser security means we do not get a real local path.
-        pathEl.value = f.name;
-        setPickedHint(
-          hintEl,
-          "Picked: " +
-            f.name +
-            " (browser can’t reveal full path; paste a real path or run the UI server)",
-        );
-        setStatus(
-          "warn",
-          "This page can’t discover your full local file path. Paste the full path (or use a relative path) or run: npm run ui",
-        );
+        // Hosted/static mode: browsers won't give us a usable full local path.
+        // Instead, embed the file contents into the JSON config so the CLI can run from that config.
+        try {
+          if (kind === "baselineImage") {
+            const ab = await f.arrayBuffer();
+            embedded.baselineImage.base64 = arrayBufferToBase64(ab);
+            embedded.baselineImage.mimeType = String(
+              f.type || "application/octet-stream",
+            );
+            embedded.baselineImage.filename = f.name || "baseline_schematic";
+            pathEl.value = "";
+            setPickedHint(
+              hintEl,
+              "Picked: " + f.name + " (embedded in JSON config)",
+            );
+          } else {
+            const text = await f.text();
+            if (kind === "question") {
+              embedded.question.text = text;
+              embedded.question.filename = f.name || "question.md";
+            } else {
+              embedded.baselineNetlist.text = text;
+              embedded.baselineNetlist.filename = f.name || "baseline.cir";
+            }
+            pathEl.value = "";
+            setPickedHint(
+              hintEl,
+              "Picked: " + f.name + " (embedded in JSON config)",
+            );
+          }
+
+          setStatus(
+            "ok",
+            "Embedded input into JSON config. Download the JSON config and run the JSON-config command.",
+          );
+        } catch (e) {
+          // Fallback: filename only
+          pathEl.value = f.name;
+          setPickedHint(
+            hintEl,
+            "Picked: " + f.name + " (paste real path if needed)",
+          );
+          setStatus(
+            "warn",
+            "Could not embed file contents. Paste the full path (or use a relative path) or run: npm run ui. " +
+              String(e?.message || e),
+          );
+        }
         updatePreview();
       }
 
@@ -1374,10 +1456,14 @@
 
       function updatePreview() {
         const cfg = getConfig();
-        if (!cfg.questionPath) {
+        const hasQuestion = Boolean(
+          cfg.questionPath ||
+          (cfg.questionText && String(cfg.questionText).trim()),
+        );
+        if (!hasQuestion) {
           setStatus(
             "warn",
-            "Question file is required (for both config + explicit commands).",
+            "Question is required (either a path, or an embedded question in the JSON config).",
           );
         } else {
           setStatus("hint", "Preview updated.");
@@ -1406,15 +1492,25 @@
           [...baseCmd, "--config", quoteCmd(configFile)].join(" ");
 
         // Explicit command
-        const argsPs = buildArgs(cfg, quotePs);
-        const argsCmd = buildArgs(cfg, quoteCmd);
-        els.cmdExplicit.value =
-          "PowerShell:\n" +
-          psPrefix +
-          [...basePs, ...argsPs].join(" ") +
-          "\n\ncmd.exe:\n" +
-          cmdPrefix +
-          [...baseCmd, ...argsCmd].join(" ");
+        if (cfg.questionPath) {
+          const argsPs = buildArgs(cfg, quotePs);
+          const argsCmd = buildArgs(cfg, quoteCmd);
+          els.cmdExplicit.value =
+            "PowerShell:\n" +
+            psPrefix +
+            [...basePs, ...argsPs].join(" ") +
+            "\n\ncmd.exe:\n" +
+            cmdPrefix +
+            [...baseCmd, ...argsCmd].join(" ");
+        } else {
+          els.cmdExplicit.value =
+            "PowerShell:\n" +
+            psPrefix +
+            "(Explicit-params command is unavailable when embedding inputs; use the JSON-config command above.)" +
+            "\n\ncmd.exe:\n" +
+            cmdPrefix +
+            "(Explicit-params command is unavailable when embedding inputs; use the JSON-config command above.)";
+        }
 
         // Interactive chat command
         const chatProvider = clean(els.chatProvider?.value) || "openai";

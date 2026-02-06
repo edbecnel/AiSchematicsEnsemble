@@ -19,9 +19,14 @@ import { writeReportDocx } from "./report/docx.js";
 import type { InputImage, ModelAnswer } from "./types.js";
 
 export type RunBatchOptions = {
-  questionPath: string;
+  questionPath?: string;
+  questionText?: string;
+  questionFilename?: string;
   baselineNetlistPath?: string;
+  baselineNetlistText?: string;
+  baselineNetlistFilename?: string;
   baselineImagePath?: string;
+  baselineImage?: InputImage;
   bundleIncludes?: boolean;
   outdir?: string;
   openaiModel?: string;
@@ -137,6 +142,14 @@ function defaultLogger(): RunBatchLogger {
   };
 }
 
+function extFromMimeType(mimeType: string | undefined): string {
+  const mt = String(mimeType || "").toLowerCase();
+  if (mt === "image/png") return ".png";
+  if (mt === "image/jpeg" || mt === "image/jpg") return ".jpg";
+  if (mt === "image/webp") return ".webp";
+  return ".bin";
+}
+
 export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = defaultLogger()): Promise<RunBatchResult> {
   const allowPrompts = opts.allowPrompts ?? true;
 
@@ -144,15 +157,33 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     logger.warn("Warning: ANTHROPIC_API_KEY not set. Ensemble step will fail.");
   }
 
-  const question = await readTextIfExists(opts.questionPath);
-  if (!question) throw new Error(`Could not read question file: ${opts.questionPath}`);
+  const question = opts.questionText?.trim()
+    ? opts.questionText
+    : opts.questionPath
+      ? await readTextIfExists(opts.questionPath)
+      : undefined;
+  if (!question?.trim()) {
+    throw new Error(
+      opts.questionPath
+        ? `Could not read question file: ${opts.questionPath}`
+        : "Missing required question input (provide questionPath or questionText)",
+    );
+  }
 
   const runDir = await makeRunDir(opts.outdir ?? "runs");
   await fs.mkdirp(path.join(runDir, "answers"));
   logger.info(`Run directory: ${runDir}`);
 
+  // Persist embedded question for traceability
+  if (opts.questionText?.trim() && !opts.questionPath) {
+    const qName = (opts.questionFilename || "question.md").replace(/[^a-zA-Z0-9._-]/g, "_") || "question.md";
+    await writeText(path.join(runDir, qName), opts.questionText);
+  }
+
   // Baseline netlist
-  const baselineLoaded = await loadBaselineNetlist(opts.baselineNetlistPath, allowPrompts);
+  const baselineLoaded = opts.baselineNetlistText?.trim()
+    ? { text: opts.baselineNetlistText, sourcePath: undefined }
+    : await loadBaselineNetlist(opts.baselineNetlistPath, allowPrompts);
   let baselineNetlist = baselineLoaded.text;
   const baselineNetlistSourcePath = baselineLoaded.sourcePath;
 
@@ -203,11 +234,19 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
   }
 
   // Baseline image
-  const baselineImagePath = await resolveBaselineImage(opts.baselineImagePath, allowPrompts);
+  const baselineImagePath = opts.baselineImage ? undefined : await resolveBaselineImage(opts.baselineImagePath, allowPrompts);
 
   let baselineImage: InputImage | undefined;
   let baselineImageFilename: string | undefined;
   let baselineImageSavedPath: string | undefined;
+
+  if (opts.baselineImage) {
+    baselineImage = opts.baselineImage;
+    baselineImageFilename = baselineImage.filename || "baseline_schematic";
+    const ext = extFromMimeType(baselineImage.mimeType);
+    baselineImageSavedPath = path.join(runDir, `baseline_schematic${ext}`);
+    await fs.writeFile(baselineImageSavedPath, Buffer.from(baselineImage.base64, "base64"));
+  }
 
   if (baselineImagePath) {
     baselineImage = await loadImageAsBase64(baselineImagePath);
