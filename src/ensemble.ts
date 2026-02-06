@@ -55,11 +55,14 @@ ${TAG_MD_OPEN}
 ${TAG_MD_CLOSE}
 
 ${TAG_SPICE_OPEN}
-(Plain SPICE netlist. Include .tran. Include .model definitions if needed.)
+(Plain SPICE netlist ONLY (no Markdown, no code fences). Include .tran. Include .model definitions if needed.)
+If you are uncertain, still output a BEST-EFFORT runnable netlist.
+Do NOT omit this block.
 ${TAG_SPICE_CLOSE}
 
 ${TAG_JSON_OPEN}
 (Strict JSON. Must be valid. Include keys: assumptions[], probes[], bom[], notes[].)
+Do NOT omit this block; if unknown, use empty arrays.
 ${TAG_JSON_CLOSE}
 `;
 }
@@ -71,10 +74,60 @@ function extractBetween(text: string, open: string, close: string): string | und
   return text.substring(i + open.length, j).trim();
 }
 
+function extractFirstFencedCodeBlock(text: string, langs: string[]): string | undefined {
+  // Very small and permissive code-fence extractor; intentionally avoids a full Markdown parser.
+  // Matches: ```lang\n...\n```
+  const fenceRe = /```([^\n`]*)\n([\s\S]*?)\n```/g;
+  let m: RegExpExecArray | null;
+  const want = langs.map((l) => l.trim().toLowerCase());
+  while ((m = fenceRe.exec(text)) !== null) {
+    const lang = (m[1] || "").trim().toLowerCase();
+    const body = (m[2] || "").trim();
+    if (!body) continue;
+    if (want.length === 0) return body;
+    if (want.includes(lang)) return body;
+  }
+  return undefined;
+}
+
+function looksLikeSpiceNetlist(text: string): boolean {
+  // Heuristic: has at least one component line and at least one analysis/control directive.
+  const lines = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter((l) => l && !l.startsWith("*") && !l.startsWith(";"));
+
+  const hasDirective = lines.some((l) => /^\.(tran|ac|dc|op|end|model|include|param)\b/i.test(l));
+  const hasComponent = lines.some((l) => /^[RCLVIEMQXD]\S*\s+\S+\s+\S+/i.test(l));
+  return hasDirective && hasComponent;
+}
+
+function extractLikelyJson(text: string): string | undefined {
+  const fromFence = extractFirstFencedCodeBlock(text, ["json"]);
+  if (fromFence) return fromFence;
+
+  // Fallback: take the outermost { ... } span. This can be wrong, but it's better than silently empty.
+  const i = text.indexOf("{");
+  const j = text.lastIndexOf("}");
+  if (i === -1 || j === -1 || j <= i) return undefined;
+  return text.substring(i, j + 1).trim();
+}
+
 export function parseEnsembleOutputs(text: string): EnsembleOutputs {
   const finalMarkdown = extractBetween(text, TAG_MD_OPEN, TAG_MD_CLOSE) ?? "";
-  const spiceNetlist = extractBetween(text, TAG_SPICE_OPEN, TAG_SPICE_CLOSE) ?? "";
-  const circuitJson = extractBetween(text, TAG_JSON_OPEN, TAG_JSON_CLOSE) ?? "";
+
+  let spiceNetlist = extractBetween(text, TAG_SPICE_OPEN, TAG_SPICE_CLOSE) ?? "";
+  if (!spiceNetlist.trim()) {
+    const fenced =
+      extractFirstFencedCodeBlock(text, ["spice", "ngspice", "ltspice"]) ??
+      extractFirstFencedCodeBlock(text, [""]);
+    if (fenced && looksLikeSpiceNetlist(fenced)) spiceNetlist = fenced;
+  }
+
+  let circuitJson = extractBetween(text, TAG_JSON_OPEN, TAG_JSON_CLOSE) ?? "";
+  if (!circuitJson.trim()) {
+    circuitJson = extractLikelyJson(text) ?? "";
+  }
 
   return { finalMarkdown, spiceNetlist, circuitJson };
 }

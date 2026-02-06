@@ -265,17 +265,91 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
   const finalCir = path.join(runDir, "final.cir");
   const finalJson = path.join(runDir, "final.json");
 
-  await writeText(finalMd, out.finalMarkdown);
-  await writeText(finalCir, out.spiceNetlist);
-  await writeText(finalJson, out.circuitJson);
+  const missingSpice = !out.spiceNetlist.trim();
+  const missingJson = !out.circuitJson.trim();
+
+  if (missingSpice) {
+    logger.error(
+      "Ensemble output did not include a <spice_netlist> block (or a recoverable SPICE code block). final.cir will contain an error placeholder.",
+    );
+  }
+  if (missingJson) {
+    logger.warn(
+      "Ensemble output did not include a <circuit_json> block (or a recoverable JSON block). final.json will contain an error placeholder.",
+    );
+  }
+
+  const finalMdText =
+    (out.finalMarkdown.trim()
+      ? out.finalMarkdown
+      : "# Ensemble output\n\n(Ensemble did not provide <final_markdown>; see ensemble_raw.txt.)\n") +
+    (missingSpice
+      ? "\n> WARNING: Missing SPICE netlist block; see ensemble_raw.txt.\n"
+      : "");
+
+  const finalCirText = missingSpice
+    ? [
+        "* ERROR: Ensemble output missing <spice_netlist> block.",
+        "* See ensemble_raw.txt for the full model output.",
+        "* baseline.cir contains the baseline topology netlist.",
+        ".end",
+        "",
+      ].join("\n")
+    : out.spiceNetlist;
+
+  const finalJsonText = missingJson
+    ? JSON.stringify(
+        {
+          error: "Ensemble output missing <circuit_json> block.",
+          assumptions: [],
+          probes: [],
+          bom: [],
+          notes: ["See ensemble_raw.txt for full model output."],
+        },
+        null,
+        2,
+      ) + "\n"
+    : out.circuitJson;
+
+  await writeText(finalMd, finalMdText);
+  await writeText(finalCir, finalCirText);
+  await writeText(finalJson, finalJsonText);
 
   // Connectivity diagram
   logger.info("Generating connectivity diagram...");
   let schematicPng: string | undefined;
   const schematicDot = path.join(runDir, "schematic.dot");
   try {
-    const comps = parseNetlist(out.spiceNetlist);
-    const dot = netlistToDot(comps);
+    const finalNetlist = out.spiceNetlist || "";
+    const baselineNetlistText = baselineNetlist || "";
+
+    let sourceLabel = "final";
+    let schematicNetlist = finalNetlist;
+
+    if (!finalNetlist.trim() && baselineNetlistText.trim()) {
+      sourceLabel = "baseline";
+      schematicNetlist = baselineNetlistText;
+      logger.warn("Final netlist is empty; generating schematic from baseline netlist instead.");
+    }
+
+    let comps = parseNetlist(schematicNetlist);
+    if (comps.length === 0 && sourceLabel !== "baseline" && baselineNetlistText.trim()) {
+      const baselineComps = parseNetlist(baselineNetlistText);
+      if (baselineComps.length) {
+        sourceLabel = "baseline";
+        schematicNetlist = baselineNetlistText;
+        comps = baselineComps;
+        logger.warn("Final netlist did not yield any components; generating schematic from baseline netlist instead.");
+      }
+    }
+
+    let dot = netlistToDot(comps);
+    if (sourceLabel !== "final") {
+      dot = dot.replace(
+        "digraph G {",
+        `digraph G {\n  // NOTE: Rendered from ${sourceLabel} netlist because final netlist was empty or unparseable.`,
+      );
+    }
     await writeText(schematicDot, dot);
 
     const pngPath = path.join(runDir, "schematic.png");

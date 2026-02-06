@@ -594,7 +594,14 @@ program
         }
 
         const out = parseEnsembleOutputs(ensemble.text);
-        const assistantText = out.finalMarkdown?.trim() || ensemble.text.trim();
+        const missingSpice = !out.spiceNetlist.trim();
+        const missingJson = !out.circuitJson.trim();
+
+        const assistantText =
+          out.finalMarkdown?.trim() ||
+          (missingSpice
+            ? "(WARNING) Ensemble did not include a SPICE netlist block; see ensemble_raw.txt.\n\n" + ensemble.text.trim()
+            : ensemble.text.trim());
         console.log(chalk.white(assistantText));
 
         if (opts.save) {
@@ -603,8 +610,32 @@ program
           const turnDir = path.join(dir, "turns", `turn_${turnN}`);
           await fs.mkdirp(turnDir);
           await writeText(path.join(turnDir, "final.md"), out.finalMarkdown);
-          await writeText(path.join(turnDir, "final.cir"), out.spiceNetlist);
-          await writeText(path.join(turnDir, "final.json"), out.circuitJson);
+
+          const finalCirText = missingSpice
+            ? [
+                "* ERROR: Ensemble output missing <spice_netlist> block.",
+                "* See ensemble_raw.txt for the full model output.",
+                ".end",
+                "",
+              ].join("\n")
+            : out.spiceNetlist;
+
+          const finalJsonText = missingJson
+            ? JSON.stringify(
+                {
+                  error: "Ensemble output missing <circuit_json> block.",
+                  assumptions: [],
+                  probes: [],
+                  bom: [],
+                  notes: ["See ensemble_raw.txt for full model output."],
+                },
+                null,
+                2,
+              ) + "\n"
+            : out.circuitJson;
+
+          await writeText(path.join(turnDir, "final.cir"), finalCirText);
+          await writeText(path.join(turnDir, "final.json"), finalJsonText);
         }
 
         turns.push({ user: userMessage, assistant: assistantText, provider: currentProvider, model, ts });
