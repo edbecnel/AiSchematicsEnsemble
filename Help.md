@@ -140,6 +140,12 @@ npm run build
 node dist/index.js run --config ai-schematics.config.json
 ```
 
+Notes:
+
+- The CLI does not auto-create `ai-schematics.config.json`. It is created when you download/export a config JSON from the UI/offline helper page (or when you make one yourself).
+- You can place the config JSON anywhere. `--config` can be a full path or a relative path from where you run the command.
+- If you set “Config filename” to a relative path like `config\ai-schematics.config.json`, ensure the file ends up at that path (browsers download to your Downloads folder, so you may need to move it into `config/`).
+
 ## How to test: offline (no server) vs UI (server)
 
 ### Test “offline / no server”

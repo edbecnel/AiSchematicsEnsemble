@@ -291,6 +291,13 @@
             project root (same folder as <code>package.json</code>).
           </li>
           <li>
+            Optional: set “Config filename” to a relative path like
+            <code>config\ai-schematics.config.json</code> if you want to keep
+            configs in a subfolder. Note: browsers can’t download into
+            subfolders — it will download as just the filename, so move it into
+            <code>config/</code> afterward.
+          </li>
+          <li>
             Copy the PowerShell or cmd command from “Command preview” and run it
             locally.
           </li>
@@ -533,7 +540,13 @@
             <tr>
               <td><strong>Download JSON</strong></td>
               <td>Downloads a config JSON file to your computer.</td>
-              <td>The filename comes from “Config filename” on the right.</td>
+              <td>
+                The name comes from “Config filename” on the right. If you
+                include a relative path (e.g.
+                <code>config\ai-schematics.config.json</code>), browsers still
+                download to your normal Downloads folder — move it into the
+                subfolder yourself.
+              </td>
             </tr>
             <tr>
               <td><strong>Import JSON</strong></td>
@@ -593,8 +606,10 @@
         <ul>
           <li>
             <strong>A) Run using JSON config</strong> uses
-            <code>--config ai-schematics.config.json</code>. This is the easiest
-            to share and reproduce.
+            <code>--config ...</code>. This is the easiest to share and
+            reproduce. You can change “Config filename” to a relative path like
+            <code>config\ai-schematics.config.json</code>; the command updates
+            as you type.
           </li>
           <li>
             <strong>B) Run using explicit parameters</strong> spells out every
