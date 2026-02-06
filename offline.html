@@ -502,6 +502,44 @@
             <button id="copyExplicitCmdBtn">Copy (cmd.exe)</button>
           </div>
 
+          <div class="hint" style="margin: 12px 0 6px">
+            C) Interactive chat (ask questions in the CLI)
+          </div>
+          <div class="row">
+            <label>Chat provider</label>
+            <select id="chatProvider">
+              <option value="openai">openai</option>
+              <option value="xai">xai</option>
+              <option value="google">google</option>
+              <option value="anthropic">anthropic</option>
+              <option value="ensemble">ensemble</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Max history</label>
+            <input
+              id="chatMaxHistory"
+              type="number"
+              min="0"
+              max="50"
+              value="10"
+            />
+          </div>
+          <div class="row">
+            <label>Save transcript</label>
+            <label style="display: inline-flex; align-items: center; gap: 8px">
+              <input id="chatSave" type="checkbox" />
+              <span class="hint"
+                >Saves to <span class="mono">outdir</span></span
+              >
+            </label>
+          </div>
+          <textarea id="cmdChat" rows="7" readonly></textarea>
+          <div class="actions">
+            <button id="copyChatPsBtn">Copy (PowerShell)</button>
+            <button id="copyChatCmdBtn">Copy (cmd.exe)</button>
+          </div>
+
           <div class="hint" style="margin-top: 10px">
             Commands assume you run them from the project root (folder
             containing <code>package.json</code>), after
@@ -678,6 +716,7 @@
         configFilename: document.getElementById("configFilename"),
         cmdJson: document.getElementById("cmdJson"),
         cmdExplicit: document.getElementById("cmdExplicit"),
+        cmdChat: document.getElementById("cmdChat"),
         status: document.getElementById("status"),
         updateBtn: document.getElementById("updateBtn"),
         saveLocalBtn: document.getElementById("saveLocalBtn"),
@@ -689,6 +728,11 @@
         copyJsonCmdBtn: document.getElementById("copyJsonCmdBtn"),
         copyExplicitPsBtn: document.getElementById("copyExplicitPsBtn"),
         copyExplicitCmdBtn: document.getElementById("copyExplicitCmdBtn"),
+        copyChatPsBtn: document.getElementById("copyChatPsBtn"),
+        copyChatCmdBtn: document.getElementById("copyChatCmdBtn"),
+        chatProvider: document.getElementById("chatProvider"),
+        chatMaxHistory: document.getElementById("chatMaxHistory"),
+        chatSave: document.getElementById("chatSave"),
       };
 
       const keysUi = {
@@ -1240,6 +1284,20 @@
         return args;
       }
 
+      function buildChatArgs(cfg, q) {
+        // `chat` CLI uses baseline context + models (no --question, no --bundle-includes).
+        const args = [];
+        if (cfg.baselineNetlistPath)
+          args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
+        if (cfg.baselineImagePath)
+          args.push("--baseline-image", q(cfg.baselineImagePath));
+        if (cfg.openaiModel) args.push("--openai-model", q(cfg.openaiModel));
+        if (cfg.grokModel) args.push("--grok-model", q(cfg.grokModel));
+        if (cfg.geminiModel) args.push("--gemini-model", q(cfg.geminiModel));
+        if (cfg.claudeModel) args.push("--claude-model", q(cfg.claudeModel));
+        return args;
+      }
+
       function getKeys() {
         return {
           OPENAI_API_KEY: keysUi.envOpenai ? clean(keysUi.envOpenai.value) : "",
@@ -1295,6 +1353,9 @@
         const basePs = ["node", "dist/index.js", "run", "--no-prompts"];
         const baseCmd = ["node", "dist\\index.js", "run", "--no-prompts"];
 
+        const baseChatPs = ["node", "dist/index.js", "chat"];
+        const baseChatCmd = ["node", "dist\\index.js", "chat"];
+
         const keys = getKeys();
         const psPrefix = prefixPs(keys);
         const cmdPrefix = prefixCmd(keys);
@@ -1318,6 +1379,43 @@
           "\n\ncmd.exe:\n" +
           cmdPrefix +
           [...baseCmd, ...argsCmd].join(" ");
+
+        // Interactive chat command
+        const chatProvider = clean(els.chatProvider?.value) || "openai";
+        const maxHistory = clean(els.chatMaxHistory?.value) || "10";
+        const chatSave = Boolean(els.chatSave && els.chatSave.checked);
+
+        const chatArgsPs = [
+          "--provider",
+          quotePs(chatProvider),
+          "--max-history",
+          quotePs(maxHistory),
+          ...buildChatArgs(cfg, quotePs),
+        ];
+        const chatArgsCmd = [
+          "--provider",
+          quoteCmd(chatProvider),
+          "--max-history",
+          quoteCmd(maxHistory),
+          ...buildChatArgs(cfg, quoteCmd),
+        ];
+
+        if (chatSave) {
+          chatArgsPs.push("--save");
+          chatArgsCmd.push("--save");
+          if (cfg.outdir) {
+            chatArgsPs.push("--outdir", quotePs(cfg.outdir));
+            chatArgsCmd.push("--outdir", quoteCmd(cfg.outdir));
+          }
+        }
+
+        els.cmdChat.value =
+          "PowerShell:\n" +
+          psPrefix +
+          [...baseChatPs, ...chatArgsPs].join(" ") +
+          "\n\ncmd.exe:\n" +
+          cmdPrefix +
+          [...baseChatCmd, ...chatArgsCmd].join(" ");
       }
 
       async function copyText(text) {
@@ -1469,6 +1567,23 @@
       );
       els.copyExplicitCmdBtn.addEventListener("click", () =>
         copyText(els.cmdExplicit.value.split("\n\ncmd.exe:\n")[1] || ""),
+      );
+
+      if (els.chatProvider)
+        els.chatProvider.addEventListener("change", updatePreview);
+      if (els.chatMaxHistory)
+        els.chatMaxHistory.addEventListener("input", updatePreview);
+      if (els.chatSave) els.chatSave.addEventListener("change", updatePreview);
+
+      els.copyChatPsBtn.addEventListener("click", () =>
+        copyText(
+          els.cmdChat.value
+            .split("\n\ncmd.exe:")[0]
+            .replace("PowerShell:\n", ""),
+        ),
+      );
+      els.copyChatCmdBtn.addEventListener("click", () =>
+        copyText(els.cmdChat.value.split("\n\ncmd.exe:\n")[1] || ""),
       );
 
       // Header links: show help when served by the UI server.

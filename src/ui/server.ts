@@ -376,10 +376,30 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
         <div style="font-weight:700; margin:14px 0 8px;">Copy/paste commands</div>
         <div class="hint">Use this to run from PowerShell or cmd.exe without the UI.</div>
         <div class="row"><label>Config filename</label><input id="configFilename" type="text" value="ai-schematics.config.json" /></div>
+        <div class="row">
+          <label>Chat provider</label>
+          <select id="chatProvider">
+            <option value="openai">openai</option>
+            <option value="xai">xai</option>
+            <option value="google">google</option>
+            <option value="anthropic">anthropic</option>
+            <option value="ensemble">ensemble</option>
+          </select>
+        </div>
+        <div class="row"><label>Max history</label><input id="chatMaxHistory" type="number" min="0" max="50" value="10" /></div>
+        <div class="row">
+          <label>Save transcript</label>
+          <label style="display:inline-flex; align-items:center; gap:8px;">
+            <input id="chatSave" type="checkbox" />
+            <span class="hint">Saves to <span class="mono">outdir</span></span>
+          </label>
+        </div>
         <div class="actions" style="margin-top:6px;">
           <button id="updateCmdBtn">Update preview</button>
           <button id="copyJsonPsBtn">Copy config cmd (PowerShell)</button>
           <button id="copyJsonCmdBtn">Copy config cmd (cmd.exe)</button>
+          <button id="copyChatPsBtn">Copy chat cmd (PowerShell)</button>
+          <button id="copyChatCmdBtn">Copy chat cmd (cmd.exe)</button>
         </div>
         <pre id="cmdPreview"></pre>
       </div>
@@ -464,6 +484,11 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     updateCmdBtn: document.getElementById('updateCmdBtn'),
     copyJsonPsBtn: document.getElementById('copyJsonPsBtn'),
     copyJsonCmdBtn: document.getElementById('copyJsonCmdBtn'),
+    copyChatPsBtn: document.getElementById('copyChatPsBtn'),
+    copyChatCmdBtn: document.getElementById('copyChatCmdBtn'),
+    chatProvider: document.getElementById('chatProvider'),
+    chatMaxHistory: document.getElementById('chatMaxHistory'),
+    chatSave: document.getElementById('chatSave'),
     cmdPreview: document.getElementById('cmdPreview'),
     status: document.getElementById('status'),
     log: document.getElementById('log'),
@@ -717,6 +742,18 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     return args;
   }
 
+  function buildChatArgs(cfg, q) {
+    // Chat CLI uses baseline context + models (no --question, no --bundle-includes).
+    const args = [];
+    if (cfg.baselineNetlistPath) args.push('--baseline-netlist', q(cfg.baselineNetlistPath));
+    if (cfg.baselineImagePath) args.push('--baseline-image', q(cfg.baselineImagePath));
+    if (cfg.openaiModel) args.push('--openai-model', q(cfg.openaiModel));
+    if (cfg.grokModel) args.push('--grok-model', q(cfg.grokModel));
+    if (cfg.geminiModel) args.push('--gemini-model', q(cfg.geminiModel));
+    if (cfg.claudeModel) args.push('--claude-model', q(cfg.claudeModel));
+    return args;
+  }
+
   async function copyText(text) {
     try {
       await navigator.clipboard.writeText(text);
@@ -751,10 +788,30 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     const basePs = ['node', 'dist/index.js', 'run', '--no-prompts'];
     const baseCmd = ['node', 'dist\\index.js', 'run', '--no-prompts'];
 
+    const baseChatPs = ['node', 'dist/index.js', 'chat'];
+    const baseChatCmd = ['node', 'dist\\index.js', 'chat'];
+
     const jsonPs = [...basePs, '--config', quotePs(fname)].join(' ');
     const jsonCmd = [...baseCmd, '--config', quoteCmd(fname)].join(' ');
     const expPs = [...basePs, ...buildArgs(cfg, quotePs)].join(' ');
     const expCmd = [...baseCmd, ...buildArgs(cfg, quoteCmd)].join(' ');
+
+    const chatProvider = String((els.chatProvider && els.chatProvider.value) || 'openai').trim() || 'openai';
+    const chatMaxHistory = String((els.chatMaxHistory && els.chatMaxHistory.value) || '10').trim() || '10';
+    const chatSave = Boolean(els.chatSave && els.chatSave.checked);
+    const chatArgsPs = ['--provider', quotePs(chatProvider), '--max-history', quotePs(chatMaxHistory), ...buildChatArgs(cfg, quotePs)];
+    const chatArgsCmd = ['--provider', quoteCmd(chatProvider), '--max-history', quoteCmd(chatMaxHistory), ...buildChatArgs(cfg, quoteCmd)];
+    if (chatSave) {
+      chatArgsPs.push('--save');
+      chatArgsCmd.push('--save');
+      if (cfg.outdir) {
+        chatArgsPs.push('--outdir', quotePs(cfg.outdir));
+        chatArgsCmd.push('--outdir', quoteCmd(cfg.outdir));
+      }
+    }
+
+    const chatPs = [...baseChatPs, ...chatArgsPs].join(' ');
+    const chatCmd = [...baseChatCmd, ...chatArgsCmd].join(' ');
 
     els.cmdPreview.textContent =
       'Config JSON command:\\n' +
@@ -762,10 +819,15 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
       '  cmd.exe:    ' + jsonCmd + '\\n\\n' +
       'Explicit-params command:\\n' +
       '  PowerShell: ' + expPs + '\\n' +
-      '  cmd.exe:    ' + expCmd;
+      '  cmd.exe:    ' + expCmd + '\n\n' +
+      'Interactive chat command:\n' +
+      '  PowerShell: ' + chatPs + '\n' +
+      '  cmd.exe:    ' + chatCmd;
 
     els.copyJsonPsBtn.onclick = () => copyText(jsonPs);
     els.copyJsonCmdBtn.onclick = () => copyText(jsonCmd);
+    if (els.copyChatPsBtn) els.copyChatPsBtn.onclick = () => copyText(chatPs);
+    if (els.copyChatCmdBtn) els.copyChatCmdBtn.onclick = () => copyText(chatCmd);
   }
 
   function downloadLink(filePath) {
@@ -983,9 +1045,11 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
   on(els.updateCmdBtn, 'click', updateCommandPreview);
 
   // Keep preview in sync as user edits
-  for (const id of ['questionPath','baselineNetlistPath','baselineImagePath','outdir','bundleIncludes','openaiModel','grokModel','geminiModel','claudeModel','configFilename']) {
+  for (const id of ['questionPath','baselineNetlistPath','baselineImagePath','outdir','bundleIncludes','openaiModel','grokModel','geminiModel','claudeModel','configFilename','chatProvider','chatMaxHistory','chatSave']) {
     const el = document.getElementById(id);
-    if (el) el.addEventListener('input', () => updateCommandPreview());
+    if (!el) continue;
+    el.addEventListener('input', () => updateCommandPreview());
+    el.addEventListener('change', () => updateCommandPreview());
   }
 
   setConfig(DEFAULTS);
