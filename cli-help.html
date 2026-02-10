@@ -170,8 +170,24 @@
         padding: 6px 10px;
         border-radius: 10px;
         border: 1px solid var(--border);
-        background: rgba(127, 127, 127, 0.08);
+        background: var(--bg);
         color: var(--fg);
+      }
+
+      /*
+        Windows browsers can render <select>/<option> menus with a light menu
+        background while inheriting a dark text color (or vice versa), leading
+        to unreadable white-on-white. Force explicit colors for the dropdown.
+      */
+      .themeSelect option {
+        background: var(--bg);
+        color: var(--fg);
+      }
+      html[data-theme="light"] .themeSelect {
+        color-scheme: light;
+      }
+      html[data-theme="dark"] .themeSelect {
+        color-scheme: dark;
       }
     </style>
   </head>
