@@ -1,0 +1,19 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "UI Server (ai-schematics)",
+			"type": "shell",
+			"command": "npm",
+			"args": [
+				"run",
+				"ui",
+				"--",
+				"--no-open"
+			],
+			"isBackground": true,
+			"problemMatcher": [],
+			"group": "build"
+		}
+	]
+}

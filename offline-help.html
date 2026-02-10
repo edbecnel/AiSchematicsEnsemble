@@ -199,8 +199,20 @@
         padding: 6px 10px;
         border-radius: 10px;
         border: 1px solid var(--border);
-        background: rgba(127, 127, 127, 0.08);
+        background: var(--bg);
         color: var(--fg);
+      }
+
+      /* Prevent unreadable native dropdown menu colors on Windows */
+      .themeSelect option {
+        background: var(--bg);
+        color: var(--fg);
+      }
+      html[data-theme="light"] .themeSelect {
+        color-scheme: light;
+      }
+      html[data-theme="dark"] .themeSelect {
+        color-scheme: dark;
       }
     </style>
   </head>

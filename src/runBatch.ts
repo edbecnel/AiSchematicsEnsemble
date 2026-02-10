@@ -16,7 +16,7 @@ import { buildEnsemblePrompt, parseEnsembleOutputs } from "./ensemble.js";
 import { parseNetlist } from "./netlist/parse.js";
 import { netlistToDot } from "./netlist/graph.js";
 import { writeReportDocx } from "./report/docx.js";
-import type { InputImage, ModelAnswer } from "./types.js";
+import type { InputImage, ModelAnswer, ProviderName } from "./types.js";
 
 export type RunBatchOptions = {
   questionPath?: string;
@@ -35,6 +35,8 @@ export type RunBatchOptions = {
   grokModel?: string;
   geminiModel?: string;
   claudeModel?: string;
+  /** Providers to query in the fanout step. If omitted, runs all providers. */
+  enabledProviders?: ProviderName[];
   /** If true, may prompt for missing baseline inputs when run in a TTY. */
   allowPrompts?: boolean;
 };
@@ -152,11 +154,55 @@ function extFromMimeType(mimeType: string | undefined): string {
   return ".bin";
 }
 
+const ALL_PROVIDERS: ProviderName[] = ["openai", "xai", "google", "anthropic"];
+
+function normalizeEnabledProviders(enabled?: ProviderName[]): ProviderName[] {
+  if (!enabled) return ALL_PROVIDERS.slice();
+  const set = new Set<ProviderName>();
+  for (const p of enabled) {
+    if (p === "openai" || p === "xai" || p === "google" || p === "anthropic") set.add(p);
+  }
+  return Array.from(set);
+}
+
+function modelForProvider(provider: ProviderName, opts: RunBatchOptions): string {
+  switch (provider) {
+    case "openai":
+      return opts.openaiModel ?? "gpt-5.2";
+    case "xai":
+      return opts.grokModel ?? "grok-4";
+    case "google":
+      return opts.geminiModel ?? "gemini-2.5-flash";
+    case "anthropic":
+      return opts.claudeModel ?? "claude-sonnet-4-5-20250929";
+  }
+}
+
+async function askProvider(args: {
+  provider: ProviderName;
+  prompt: string;
+  model: string;
+  image?: InputImage;
+  maxTokens?: number;
+}): Promise<ModelAnswer> {
+  switch (args.provider) {
+    case "openai":
+      return askOpenAI(args.prompt, args.model, args.image);
+    case "xai":
+      return askGrok(args.prompt, args.model, args.image);
+    case "google":
+      return askGemini(args.prompt, args.model, args.image);
+    case "anthropic":
+      return askClaude(args.prompt, args.model, args.maxTokens ?? 1800, args.image);
+  }
+}
+
 export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = defaultLogger()): Promise<RunBatchResult> {
   const allowPrompts = opts.allowPrompts ?? true;
 
-  if (!process.env.ANTHROPIC_API_KEY) {
-    logger.warn("Warning: ANTHROPIC_API_KEY not set. Ensemble step will fail.");
+  const enabledProviders = normalizeEnabledProviders(opts.enabledProviders);
+  if (!enabledProviders.length) {
+    throw new Error("No providers enabled. Select at least one provider.");
   }
 
   const question = opts.questionText?.trim()
@@ -269,12 +315,19 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
 
   // Fanout
   logger.info("Querying models...");
-  const answers = await Promise.all<ModelAnswer>([
-    askOpenAI(fanoutPrompt, opts.openaiModel ?? "gpt-5.2", baselineImage),
-    askGrok(fanoutPrompt, opts.grokModel ?? "grok-4", baselineImage),
-    askGemini(fanoutPrompt, opts.geminiModel ?? "gemini-2.5-flash", baselineImage),
-    askClaude(fanoutPrompt, opts.claudeModel ?? "claude-sonnet-4-5-20250929", 1200, baselineImage),
-  ]);
+
+  // Best-effort env-key warnings (providers will still return structured errors if called without a key).
+  if (enabledProviders.includes("openai") && !process.env.OPENAI_API_KEY) logger.warn("Warning: OPENAI_API_KEY not set. OpenAI calls will fail.");
+  if (enabledProviders.includes("xai") && !process.env.XAI_API_KEY) logger.warn("Warning: XAI_API_KEY not set. Grok calls will fail.");
+  if (enabledProviders.includes("google") && !process.env.GEMINI_API_KEY) logger.warn("Warning: GEMINI_API_KEY not set. Gemini calls will fail.");
+  if (enabledProviders.includes("anthropic") && !process.env.ANTHROPIC_API_KEY) logger.warn("Warning: ANTHROPIC_API_KEY not set. Claude calls will fail.");
+
+  const fanoutJobs = enabledProviders.map((provider) => {
+    const model = modelForProvider(provider, opts);
+    const maxTokens = provider === "anthropic" ? 1200 : undefined;
+    return askProvider({ provider, prompt: fanoutPrompt, model, image: baselineImage, maxTokens });
+  });
+  const answers = await Promise.all<ModelAnswer>(fanoutJobs);
 
   const answersJson = path.join(runDir, "answers.json");
   await writeJson(answersJson, answers);
@@ -287,7 +340,14 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
   }
 
   // Ensemble
-  logger.info("Ensembling with Claude...");
+  // Prefer Claude as the ensembler when available, else fall back to the first enabled provider.
+  const ensembleProvider: ProviderName = enabledProviders.includes("anthropic") ? "anthropic" : enabledProviders[0];
+  const ensembleModel = modelForProvider(ensembleProvider, opts);
+  if (ensembleProvider === "anthropic" && !process.env.ANTHROPIC_API_KEY) {
+    logger.warn("Warning: ANTHROPIC_API_KEY not set. Ensemble step will fail.");
+  }
+
+  logger.info(`Ensembling with ${ensembleProvider}...`);
   const ensemblePrompt = buildEnsemblePrompt({
     question,
     baselineNetlist,
@@ -295,7 +355,14 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     answers,
   });
 
-  const ensemble = await askClaude(ensemblePrompt, opts.claudeModel ?? "claude-sonnet-4-5-20250929", 4800, baselineImage);
+  const ensembleMaxTokens = ensembleProvider === "anthropic" ? 4800 : undefined;
+  const ensemble = await askProvider({
+    provider: ensembleProvider,
+    prompt: ensemblePrompt,
+    model: ensembleModel,
+    image: baselineImage,
+    maxTokens: ensembleMaxTokens,
+  });
   await writeText(path.join(runDir, "ensemble_raw.txt"), ensemble.text || ensemble.error || "");
 
   if (ensemble.error || !ensemble.text) {

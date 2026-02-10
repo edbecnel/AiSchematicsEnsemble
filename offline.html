@@ -132,6 +132,15 @@
         background: var(--field-bg);
         color: inherit;
       }
+      select {
+        width: 100%;
+        min-width: 0;
+        padding: 8px 10px;
+        border-radius: 8px;
+        border: 1px solid var(--field-border);
+        background: var(--field-bg);
+        color: inherit;
+      }
       input[type="text"].subduedPath {
         color: var(--muted);
         opacity: 0.85;
@@ -192,8 +201,20 @@
         padding: 6px 10px;
         border-radius: 10px;
         border: 1px solid var(--btn-border);
-        background: var(--btn-bg);
-        color: inherit;
+        background: var(--bg);
+        color: var(--fg);
+      }
+
+      /* Prevent unreadable native dropdown menu colors on Windows */
+      .themeSelect option {
+        background: var(--bg);
+        color: var(--fg);
+      }
+      html[data-theme="light"] .themeSelect {
+        color-scheme: light;
+      }
+      html[data-theme="dark"] .themeSelect {
+        color-scheme: dark;
       }
       }
       .mono {
@@ -389,12 +410,10 @@
           </div>
           <div class="row">
             <label>Bundle includes</label
-            ><input
-              id="bundleIncludes"
-              type="text"
-              value="false"
-              placeholder="true/false"
-            />
+            ><select id="bundleIncludes">
+              <option value="false" selected>false</option>
+              <option value="true">true</option>
+            </select>
           </div>
 
           <div class="row">
@@ -434,7 +453,9 @@
             </button>
           </div>
           <div class="row">
-            <label>OpenAI model</label>
+            <label style="display: flex; gap: 8px; align-items: center">
+              <input id="useOpenai" type="checkbox" checked /> OpenAI model
+            </label>
             <div style="display: flex; gap: 8px; align-items: center">
               <input id="openaiModel" type="text" value="gpt-5.2" />
               <button
@@ -447,7 +468,9 @@
             </div>
           </div>
           <div class="row">
-            <label>Grok model</label>
+            <label style="display: flex; gap: 8px; align-items: center">
+              <input id="useXai" type="checkbox" checked /> Grok model
+            </label>
             <div style="display: flex; gap: 8px; align-items: center">
               <input id="grokModel" type="text" value="grok-4" />
               <button type="button" id="xaiKeyBtn" title="Enter XAI_API_KEY">
@@ -456,7 +479,9 @@
             </div>
           </div>
           <div class="row">
-            <label>Gemini model</label>
+            <label style="display: flex; gap: 8px; align-items: center">
+              <input id="useGemini" type="checkbox" checked /> Gemini model
+            </label>
             <div style="display: flex; gap: 8px; align-items: center">
               <input id="geminiModel" type="text" value="gemini-2.5-flash" />
               <button
@@ -469,7 +494,9 @@
             </div>
           </div>
           <div class="row">
-            <label>Claude model</label>
+            <label style="display: flex; gap: 8px; align-items: center">
+              <input id="useAnthropic" type="checkbox" checked /> Claude model
+            </label>
             <div style="display: flex; gap: 8px; align-items: center">
               <input
                 id="claudeModel"
@@ -512,7 +539,12 @@
           </div>
           <div class="hint" style="margin-top: 6px">
             Note: when you use the file picker, browsers do not provide a real
-            file path. You may need to paste a path manually.
+            file path. You may need to paste a path manually (relative or full).
+            Example:
+            <span class="mono">runs\run02\current\question.md</span>,
+            <span class="mono">runs\run02\Babcock-Patent-Driver-SIM-2.cir</span
+            >,
+            <span class="mono">runs\run02\schematic.png</span>
           </div>
         </div>
 
@@ -752,6 +784,10 @@
         schematicDpi: document.getElementById("schematicDpi"),
         bundleIncludes: document.getElementById("bundleIncludes"),
         preferFilenameOnly: document.getElementById("preferFilenameOnly"),
+        useOpenai: document.getElementById("useOpenai"),
+        useXai: document.getElementById("useXai"),
+        useGemini: document.getElementById("useGemini"),
+        useAnthropic: document.getElementById("useAnthropic"),
         openaiModel: document.getElementById("openaiModel"),
         grokModel: document.getElementById("grokModel"),
         geminiModel: document.getElementById("geminiModel"),
@@ -935,6 +971,16 @@
 
         const dpiRaw = clean(els.schematicDpi.value);
         const dpi = dpiRaw ? Number.parseInt(dpiRaw, 10) : NaN;
+
+        const enabledProviders = [];
+        if (els.useOpenai && els.useOpenai.checked)
+          enabledProviders.push("openai");
+        if (els.useXai && els.useXai.checked) enabledProviders.push("xai");
+        if (els.useGemini && els.useGemini.checked)
+          enabledProviders.push("google");
+        if (els.useAnthropic && els.useAnthropic.checked)
+          enabledProviders.push("anthropic");
+
         const cfg = {
           questionPath: hasEmbeddedQuestion
             ? undefined
@@ -965,6 +1011,7 @@
           grokModel: clean(els.grokModel.value),
           geminiModel: clean(els.geminiModel.value),
           claudeModel: clean(els.claudeModel.value),
+          enabledProviders,
         };
         return cfg;
       }
@@ -1099,6 +1146,15 @@
         }
         const f = fileEl && fileEl.files && fileEl.files[0];
         if (!f) return;
+
+        // Immediately reflect selection in the textbox.
+        try {
+          setPathBoxMode(pathEl, "path");
+          pathEl.value = f.name;
+          setPickedHint(hintEl, "Picked: " + f.name);
+        } catch {
+          // ignore
+        }
 
         const canUpload = await hasUploadApi();
         if (canUpload) {
@@ -1570,6 +1626,14 @@
 
       function buildArgs(cfg, q) {
         const args = [];
+        const enabled =
+          Array.isArray(cfg.enabledProviders) && cfg.enabledProviders.length
+            ? cfg.enabledProviders.map((p) =>
+                String(p || "")
+                  .trim()
+                  .toLowerCase(),
+              )
+            : ["openai", "xai", "google", "anthropic"];
         args.push("--question", q(cfg.questionPath));
         if (cfg.baselineNetlistPath)
           args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
@@ -1578,24 +1642,40 @@
         if (cfg.bundleIncludes) args.push("--bundle-includes");
         if (cfg.outdir) args.push("--outdir", q(cfg.outdir));
         if (cfg.schematicDpi) args.push("--schematic-dpi", q(cfg.schematicDpi));
-        if (cfg.openaiModel) args.push("--openai-model", q(cfg.openaiModel));
-        if (cfg.grokModel) args.push("--grok-model", q(cfg.grokModel));
-        if (cfg.geminiModel) args.push("--gemini-model", q(cfg.geminiModel));
-        if (cfg.claudeModel) args.push("--claude-model", q(cfg.claudeModel));
+        if (enabled.includes("openai") && cfg.openaiModel)
+          args.push("--openai-model", q(cfg.openaiModel));
+        if (enabled.includes("xai") && cfg.grokModel)
+          args.push("--grok-model", q(cfg.grokModel));
+        if (enabled.includes("google") && cfg.geminiModel)
+          args.push("--gemini-model", q(cfg.geminiModel));
+        if (enabled.includes("anthropic") && cfg.claudeModel)
+          args.push("--claude-model", q(cfg.claudeModel));
         return args;
       }
 
       function buildChatArgs(cfg, q) {
         // `chat` CLI uses baseline context + models (no --question, no --bundle-includes).
         const args = [];
+        const enabled =
+          Array.isArray(cfg.enabledProviders) && cfg.enabledProviders.length
+            ? cfg.enabledProviders.map((p) =>
+                String(p || "")
+                  .trim()
+                  .toLowerCase(),
+              )
+            : ["openai", "xai", "google", "anthropic"];
         if (cfg.baselineNetlistPath)
           args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
         if (cfg.baselineImagePath)
           args.push("--baseline-image", q(cfg.baselineImagePath));
-        if (cfg.openaiModel) args.push("--openai-model", q(cfg.openaiModel));
-        if (cfg.grokModel) args.push("--grok-model", q(cfg.grokModel));
-        if (cfg.geminiModel) args.push("--gemini-model", q(cfg.geminiModel));
-        if (cfg.claudeModel) args.push("--claude-model", q(cfg.claudeModel));
+        if (enabled.includes("openai") && cfg.openaiModel)
+          args.push("--openai-model", q(cfg.openaiModel));
+        if (enabled.includes("xai") && cfg.grokModel)
+          args.push("--grok-model", q(cfg.grokModel));
+        if (enabled.includes("google") && cfg.geminiModel)
+          args.push("--gemini-model", q(cfg.geminiModel));
+        if (enabled.includes("anthropic") && cfg.claudeModel)
+          args.push("--claude-model", q(cfg.claudeModel));
         return args;
       }
 
@@ -1823,6 +1903,15 @@
         try {
           const cfg = JSON.parse(raw);
 
+          const enabled =
+            Array.isArray(cfg.enabledProviders) && cfg.enabledProviders.length
+              ? cfg.enabledProviders.map((p) =>
+                  String(p || "")
+                    .trim()
+                    .toLowerCase(),
+                )
+              : ["openai", "xai", "google", "anthropic"];
+
           // Restore embedded inputs (if present) and show filenames as display-only values.
           if (cfg.questionText) {
             embedded.question.text = String(cfg.questionText || "");
@@ -1894,6 +1983,11 @@
           els.grokModel.value = cfg.grokModel || "";
           els.geminiModel.value = cfg.geminiModel || "";
           els.claudeModel.value = cfg.claudeModel || "";
+          if (els.useOpenai) els.useOpenai.checked = enabled.includes("openai");
+          if (els.useXai) els.useXai.checked = enabled.includes("xai");
+          if (els.useGemini) els.useGemini.checked = enabled.includes("google");
+          if (els.useAnthropic)
+            els.useAnthropic.checked = enabled.includes("anthropic");
           setStatus("ok", "Loaded saved config.");
           updatePreview();
         } catch (e) {
@@ -1919,6 +2013,15 @@
       async function importJson(file) {
         const text = await file.text();
         const cfg = JSON.parse(text);
+
+        const enabled =
+          Array.isArray(cfg.enabledProviders) && cfg.enabledProviders.length
+            ? cfg.enabledProviders.map((p) =>
+                String(p || "")
+                  .trim()
+                  .toLowerCase(),
+              )
+            : ["openai", "xai", "google", "anthropic"];
 
         if (cfg.questionText) {
           embedded.question.text = String(cfg.questionText || "");
@@ -1988,6 +2091,11 @@
         els.grokModel.value = cfg.grokModel || "";
         els.geminiModel.value = cfg.geminiModel || "";
         els.claudeModel.value = cfg.claudeModel || "";
+        if (els.useOpenai) els.useOpenai.checked = enabled.includes("openai");
+        if (els.useXai) els.useXai.checked = enabled.includes("xai");
+        if (els.useGemini) els.useGemini.checked = enabled.includes("google");
+        if (els.useAnthropic)
+          els.useAnthropic.checked = enabled.includes("anthropic");
         setStatus("ok", "Imported config JSON.");
         updatePreview();
       }

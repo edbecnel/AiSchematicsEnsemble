@@ -27,6 +27,7 @@ const RunConfigSchema = z
     grokModel: z.string().optional(),
     geminiModel: z.string().optional(),
     claudeModel: z.string().optional(),
+    enabledProviders: z.array(z.enum(["openai", "xai", "google", "anthropic"])).optional(),
   })
   .strict();
 
@@ -78,6 +79,7 @@ export async function readRunConfig(configPath: string): Promise<RunConfig> {
     grokModel: cleanString(cfg.grokModel),
     geminiModel: cleanString(cfg.geminiModel),
     claudeModel: cleanString(cfg.claudeModel),
+    enabledProviders: Array.isArray(cfg.enabledProviders) && cfg.enabledProviders.length ? cfg.enabledProviders : undefined,
   };
 }
 

@@ -5,6 +5,7 @@ import crypto from "node:crypto";
 import fs from "fs-extra";
 import { execa } from "execa";
 import Busboy from "busboy";
+import archiver from "archiver";
 
 import { runBatch, type RunBatchOptions, type RunBatchResult, type RunBatchLogger } from "../runBatch.js";
 
@@ -160,7 +161,19 @@ function sanitizeFileName(name: string): string {
   return cleaned || "file";
 }
 
-async function parseMultipartSingleFile(req: http.IncomingMessage, opts: { uploadDir: string }): Promise<{ fieldname: string; filePath: string; filename: string; mimeType: string }> {
+function sanitizeFileNamePreserveSpaces(name: string): string {
+  // For SPICE include/lib files, preserving spaces is useful because netlists can reference quoted filenames.
+  // We still strip path separators and invalid control characters.
+  const base = path.basename(name || "file");
+  const cleaned = base.replace(/[<>:"/\\|?*\x00-\x1F]/g, "_");
+  const trimmed = cleaned.trim();
+  return trimmed || "file";
+}
+
+async function parseMultipartSingleFile(
+  req: http.IncomingMessage,
+  opts: { uploadDir: string },
+): Promise<{ fieldname: string; filePath: string; filename: string; originalFilename: string; mimeType: string }> {
   const contentType = String(req.headers["content-type"] ?? "");
   if (!contentType.toLowerCase().startsWith("multipart/form-data")) {
     throw new Error("Expected multipart/form-data");
@@ -171,26 +184,67 @@ async function parseMultipartSingleFile(req: http.IncomingMessage, opts: { uploa
   return new Promise((resolve, reject) => {
     const bb = Busboy({ headers: req.headers });
 
-    let resolved = false;
-    bb.on("file", (fieldname: string, file: NodeJS.ReadableStream, info: { filename: string; encoding: string; mimeType: string }) => {
-      const safe = sanitizeFileName(info.filename || "upload");
-      const filePath = path.join(opts.uploadDir, safe);
-      const out = fs.createWriteStream(filePath);
+    let sawFile = false;
+    let fileResult:
+      | { fieldname: string; filePath: string; filename: string; originalFilename: string; mimeType: string }
+      | undefined;
+    let fileWriteDone: Promise<void> | undefined;
 
-      file.on("error", reject);
-      out.on("error", reject);
-      out.on("finish", () => {
-        if (resolved) return;
-        resolved = true;
-        resolve({ fieldname, filePath, filename: safe, mimeType: info.mimeType || "application/octet-stream" });
-      });
+    // NOTE: Busboy callback signature differs across major versions:
+    // - v1+: (fieldname, file, info)
+    // - v0.x: (fieldname, file, filename, encoding, mimetype)
+    bb.on(
+      "file",
+      (
+        fieldname: string,
+        file: NodeJS.ReadableStream,
+        infoOrFilename: any,
+        encodingMaybe?: any,
+        mimeTypeMaybe?: any,
+      ) => {
+        // Only accept the first file; drain any others.
+        if (sawFile) {
+          file.resume();
+          return;
+        }
+        sawFile = true;
 
-      file.pipe(out);
-    });
+        const originalFilename =
+          typeof infoOrFilename === "string" ? String(infoOrFilename || "") : String(infoOrFilename?.filename || "");
+        const mimeType =
+          typeof infoOrFilename === "string"
+            ? String(mimeTypeMaybe || "")
+            : String(infoOrFilename?.mimeType || "");
+
+        const safe = sanitizeFileName(originalFilename || "upload");
+        const filePath = path.join(opts.uploadDir, safe);
+        const out = fs.createWriteStream(filePath);
+
+        fileWriteDone = new Promise((res, rej) => {
+          file.on("error", rej);
+          out.on("error", rej);
+          out.on("finish", () => res());
+        });
+
+        fileResult = {
+          fieldname,
+          filePath,
+          filename: safe,
+          originalFilename: originalFilename || safe,
+          mimeType: mimeType || "application/octet-stream",
+        };
+
+        file.pipe(out);
+      },
+    );
 
     bb.on("error", reject);
     bb.on("finish", () => {
-      if (!resolved) reject(new Error("No file received"));
+      if (!sawFile || !fileResult || !fileWriteDone) {
+        reject(new Error("No file received"));
+        return;
+      }
+      fileWriteDone.then(() => resolve(fileResult!)).catch(reject);
     });
 
     req.pipe(bb);
@@ -228,11 +282,29 @@ function isWithin(childPath: string, parentPath: string): boolean {
 function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
   const safeJson = (v: any) => JSON.stringify(v).replace(/</g, "\\u003c");
 
+  const defaults = {
+    questionPath: "examples/question.md",
+    baselineNetlistPath: "",
+    baselineImagePath: "",
+    outdir: args.defaultOutdir,
+    schematicDpi: 300,
+    bundleIncludes: false,
+    openaiModel: "gpt-5.2",
+    grokModel: "grok-4",
+    geminiModel: "gemini-2.5-flash",
+    claudeModel: "claude-sonnet-4-5-20250929",
+    enabledProviders: ["openai", "xai", "google", "anthropic"],
+  };
+
   return `<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link
+    rel="icon"
+    href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%2064%2064%27%3E%3Crect%20width%3D%2764%27%20height%3D%2764%27%20rx%3D%2712%27%20fill%3D%27%232563eb%27/%3E%3Cpath%20d%3D%27M32%2014l14%2036h-6l-3-8H27l-3%208h-6l14-36h6zm-3%2022h10l-5-14-5%2014z%27%20fill%3D%27white%27/%3E%3C/svg%3E"
+  />
   <title>AI Schematics Ensemble</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
@@ -247,12 +319,14 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     .row > * { min-width: 0; }
     @media (max-width: 620px) { .row { grid-template-columns: 1fr; } }
     input[type=text], input[type=number], input[type=password] { width: 100%; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(127,127,127,.4); background: rgba(127,127,127,.06); color: inherit; }
+    input[type=text].subduedPath { opacity: .85; }
+    input[type=text].subduedPath[readonly] { cursor: default; }
     .hint { opacity: .75; font-size: 12px; }
+    .sectionTitle { font-weight: 700; margin: 16px 0 8px; }
     .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
     button, .btnLike { padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(127,127,127,.4); background: rgba(127,127,127,.12); cursor: pointer; }
     .btnLike { display: inline-flex; align-items: center; justify-content: center; user-select: none; }
     button.primary { background: #2563eb; color: white; border-color: #2563eb; }
-    button.danger { background: rgba(220,38,38,.1); border-color: rgba(220,38,38,.4); }
     pre { white-space: pre-wrap; word-break: break-word; padding: 10px; border-radius: 10px; border: 1px solid rgba(127,127,127,.3); background: rgba(127,127,127,.06); max-height: 320px; overflow: auto; }
     .ok { color: #16a34a; }
     .warn { color: #d97706; }
@@ -268,12 +342,13 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
         <div class="hint">Server CWD: <span class="mono" id="cwd"></span></div>
       </div>
       <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; justify-content:flex-end;">
-        <a class="hint" href="/help.html" target="_blank" rel="noopener">Help</a>
+        <a class="hint" href="/online-help.html" target="_blank" rel="noopener">Help</a>
         <a class="hint" href="/" target="_blank" rel="noopener">Offline config</a>
         <span class="hint">Batch runs only (for now)</span>
       </div>
     </div>
   </header>
+
   <main>
     <div class="grid">
       <div class="card">
@@ -283,7 +358,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
           <label>Question file</label>
           <div>
             <div style="display:flex; gap:8px; align-items:center;">
-              <input id="questionPath" type="text" value="examples/question.md" placeholder="examples/question.md" />
+              <input id="questionPath" type="text" value="" placeholder="(required)" readonly class="subduedPath" />
               <label class="btnLike" id="questionBrowseBtn" for="questionFile" title="Browse">...</label>
               <button type="button" id="questionClearBtn" title="Clear" style="padding: 8px 10px;">✕</button>
               <input id="questionFile" type="file" accept=".md,.txt,text/plain,text/markdown" style="position:absolute; left:-10000px; width:1px; height:1px; opacity:0" />
@@ -296,7 +371,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
           <label>Baseline netlist</label>
           <div>
             <div style="display:flex; gap:8px; align-items:center;">
-              <input id="baselineNetlistPath" type="text" value="" placeholder="(optional)" />
+              <input id="baselineNetlistPath" type="text" value="" placeholder="(optional)" readonly class="subduedPath" />
               <label class="btnLike" id="baselineNetlistBrowseBtn" for="baselineNetlistFile" title="Browse">...</label>
               <button type="button" id="baselineNetlistClearBtn" title="Clear" style="padding: 8px 10px;">✕</button>
               <input id="baselineNetlistFile" type="file" accept=".cir,.sp,.lib,.txt,text/plain" style="position:absolute; left:-10000px; width:1px; height:1px; opacity:0" />
@@ -306,122 +381,139 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
         </div>
 
         <div class="row">
+          <label>Baseline includes</label>
+          <div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input id="includeSummary" type="text" value="" placeholder="(optional)" readonly class="subduedPath" />
+              <label class="btnLike" id="includeBrowseBtn" for="includeFiles" title="Browse .include/.lib files">...</label>
+              <button type="button" id="includeClearBtn" title="Clear" style="padding: 8px 10px;">✕</button>
+              <input id="includeFiles" type="file" multiple accept=".lib,.cir,.sp,.txt,text/plain" style="position:absolute; left:-10000px; width:1px; height:1px; opacity:0" />
+            </div>
+            <div class="hint">Upload one or more <span class="mono">.include/.lib</span> deps so an uploaded baseline netlist can reference them by relative path.</div>
+            <div class="hint" id="includeFilesList"></div>
+          </div>
+        </div>
+
+        <div class="row">
           <label>Baseline image</label>
           <div>
             <div style="display:flex; gap:8px; align-items:center;">
-              <input id="baselineImagePath" type="text" value="" placeholder="(optional)" />
+              <input id="baselineImagePath" type="text" value="" placeholder="(optional)" readonly class="subduedPath" />
               <label class="btnLike" id="baselineImageBrowseBtn" for="baselineImageFile" title="Browse">...</label>
               <button type="button" id="baselineImageClearBtn" title="Clear" style="padding: 8px 10px;">✕</button>
-              <input id="baselineImageFile" type="file" accept="image/*" style="position:absolute; left:-10000px; width:1px; height:1px; opacity:0" />
+              <input id="baselineImageFile" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" style="position:absolute; left:-10000px; width:1px; height:1px; opacity:0" />
             </div>
             <div class="hint" id="baselineImagePickedHint"></div>
           </div>
         </div>
 
-        <div class="row"><label>Outdir</label><input id="outdir" type="text" value="${args.defaultOutdir}" placeholder="runs" /></div>
+        <div id="uploadSnapshotWarn" class="hint" style="margin-top:10px; display:none; color:#b45309;">
+          Note: one or more inputs point into <span class="mono">.ui_uploads</span> (uploaded snapshots). Re-upload after edits.
+        </div>
+
+        <div class="sectionTitle">Run &amp; Config</div>
+        <div class="actions">
+          <button class="primary" id="runBtn">Run</button>
+          <button type="button" id="saveConfigBtn">Save config</button>
+          <button type="button" id="loadConfigBtn">Load config</button>
+          <button type="button" id="exportConfigBtn">Export config</button>
+          <label class="btnLike" title="Import config" style="gap:8px;">Import<input id="importConfigInput" type="file" accept="application/json,.json" style="display:none" /></label>
+          <button type="button" id="clearSavedBtn">Clear saved</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div style="font-weight:700; margin-bottom:8px;">Settings</div>
+
+        <div class="row">
+          <label>Outdir</label>
+          <input id="outdir" type="text" value="runs" />
+        </div>
+
         <div class="row">
           <label>Schematic DPI</label>
           <div>
             <input id="schematicDpi" type="number" min="1" max="2400" value="" placeholder="(optional) e.g. 300" />
-            <div class="hint">Controls <span class="mono">schematic.png</span> resolution (Graphviz). <span class="mono">schematic.svg</span> is best for zooming.</div>
+            <div class="hint">Controls <span class="mono">schematic.png</span> resolution (Graphviz).</div>
           </div>
         </div>
+
         <div class="row">
           <label>Bundle includes</label>
           <div>
-            <label><input id="bundleIncludes" type="checkbox" /> Copy <span class="mono">.include/.lib</span> deps into run folder</label>
-            <div class="hint">Only works when baseline netlist is a file path (not pasted).</div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <select id="bundleIncludes" style="padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(127,127,127,.4); background: rgba(127,127,127,.06); color: inherit;">
+                <option value="false" selected>false</option>
+                <option value="true">true</option>
+              </select>
+              <span class="hint">Copy <span class="mono">.include/.lib</span> deps into run folder</span>
+            </div>
           </div>
         </div>
 
-        <div class="actions">
-          <button class="primary" id="runBtn">Run</button>
-          <button id="saveConfigBtn">Save config</button>
-          <button id="loadConfigBtn">Load config</button>
-          <button id="exportConfigBtn">Export JSON</button>
-          <label class="hint" style="display:inline-flex; align-items:center; gap:8px;">Import JSON <input id="importConfigInput" type="file" accept="application/json" /></label>
-          <button class="danger" id="clearSavedBtn">Clear saved</button>
-        </div>
-
-        <div class="hint" style="margin-top:10px;">Paths are resolved on the server (this machine), relative to the server CWD shown above.</div>
-      </div>
-
-      <div class="card">
-        <div style="font-weight:700; margin-bottom:8px;">Models</div>
-        <div class="hint" style="margin-bottom:8px;">Optional: leave blank to use defaults.</div>
-        <div class="row">
-          <label>OpenAI model</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="openaiModel" type="text" value="gpt-5.2" placeholder="gpt-5.2" />
-            <button type="button" id="openaiKeyBtn" title="Edit OPENAI_API_KEY">...</button>
-          </div>
+        <div
+          style="
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 12px;
+            font-weight: 700;
+            margin: 14px 0 8px;
+          "
+        >
+          <div>Models (optional)</div>
+          <button type="button" id="keysOpenBtn" title="Open API keys" style="padding: 8px 10px">API Keys…</button>
         </div>
         <div class="row">
-          <label>Grok model</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="grokModel" type="text" value="grok-4" placeholder="grok-4" />
-            <button type="button" id="xaiKeyBtn" title="Edit XAI_API_KEY">...</button>
-          </div>
-        </div>
-        <div class="row">
-          <label>Gemini model</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="geminiModel" type="text" value="gemini-2.5-flash" placeholder="gemini-2.5-flash" />
-            <button type="button" id="geminiKeyBtn" title="Edit GEMINI_API_KEY">...</button>
-          </div>
-        </div>
-        <div class="row">
-          <label>Claude model</label>
-          <div style="display:flex; gap:8px; align-items:center;">
-            <input id="claudeModel" type="text" value="claude-sonnet-4-5-20250929" placeholder="claude-sonnet-4-5-20250929" />
-            <button type="button" id="anthropicKeyBtn" title="Edit ANTHROPIC_API_KEY">...</button>
-          </div>
-        </div>
-
-        <div class="hint" style="margin:10px 0 0;">Keys are stored in <span class="mono">.env</span>. Saving creates backups in <span class="mono">.env_backups/</span>.</div>
-
-        <div style="font-weight:700; margin:14px 0 8px;">Copy/paste commands</div>
-        <div class="hint">Use this to run from PowerShell or cmd.exe without the UI.</div>
-        <div class="row"><label>Config filename</label><input id="configFilename" type="text" value="ai-schematics.config.json" /></div>
-        <div class="row">
-          <label>Chat provider</label>
-          <select id="chatProvider">
-            <option value="openai">openai</option>
-            <option value="xai">xai</option>
-            <option value="google">google</option>
-            <option value="anthropic">anthropic</option>
-            <option value="ensemble">ensemble</option>
-          </select>
-        </div>
-        <div class="row"><label>Max history</label><input id="chatMaxHistory" type="number" min="0" max="50" value="10" /></div>
-        <div class="row">
-          <label>Save transcript</label>
-          <label style="display:inline-flex; align-items:center; gap:8px;">
-            <input id="chatSave" type="checkbox" />
-            <span class="hint">Saves to <span class="mono">outdir</span></span>
+          <label style="display: flex; gap: 8px; align-items: center">
+            <input id="useOpenai" type="checkbox" checked /> OpenAI model
           </label>
+          <div style="display: flex; gap: 8px; align-items: center">
+            <input id="openaiModel" type="text" value="gpt-5.2" />
+            <button type="button" id="openaiKeyBtn" title="Enter OPENAI_API_KEY">Keys</button>
+          </div>
         </div>
-        <div class="actions" style="margin-top:6px;">
-          <button id="updateCmdBtn">Update preview</button>
-          <button id="copyJsonPsBtn">Copy config cmd (PowerShell)</button>
-          <button id="copyJsonCmdBtn">Copy config cmd (cmd.exe)</button>
-          <button id="copyChatPsBtn">Copy chat cmd (PowerShell)</button>
-          <button id="copyChatCmdBtn">Copy chat cmd (cmd.exe)</button>
+        <div class="row">
+          <label style="display: flex; gap: 8px; align-items: center">
+            <input id="useXai" type="checkbox" checked /> Grok model
+          </label>
+          <div style="display: flex; gap: 8px; align-items: center">
+            <input id="grokModel" type="text" value="grok-4" />
+            <button type="button" id="xaiKeyBtn" title="Enter XAI_API_KEY">Keys</button>
+          </div>
         </div>
-        <div id="uploadSnapshotWarn" class="hint" style="margin-top:10px; display:none; color:#b45309;">
-          Note: one or more inputs point into <span class="mono">.ui_uploads</span> (uploaded snapshots). If you edit your original files,
-          re-upload (pick them again) or paste the real source paths.
+        <div class="row">
+          <label style="display: flex; gap: 8px; align-items: center">
+            <input id="useGemini" type="checkbox" checked /> Gemini model
+          </label>
+          <div style="display: flex; gap: 8px; align-items: center">
+            <input id="geminiModel" type="text" value="gemini-2.5-flash" />
+            <button type="button" id="geminiKeyBtn" title="Enter GEMINI_API_KEY">Keys</button>
+          </div>
         </div>
-        <pre id="cmdPreview"></pre>
+        <div class="row">
+          <label style="display: flex; gap: 8px; align-items: center">
+            <input id="useAnthropic" type="checkbox" checked /> Claude model
+          </label>
+          <div style="display: flex; gap: 8px; align-items: center">
+            <input id="claudeModel" type="text" value="claude-sonnet-4-5-20250929" />
+            <button type="button" id="anthropicKeyBtn" title="Enter ANTHROPIC_API_KEY">Keys</button>
+          </div>
+        </div>
+
+        <div class="hint" style="margin-top:8px;">Note: these file fields are upload-only on the online page. Use the <span class="mono">...</span> buttons to pick files.</div>
       </div>
 
       <div class="card" style="grid-column: 1 / -1;">
         <div style="font-weight:700; margin-bottom:8px;">Status</div>
         <div id="status" class="hint">Idle.</div>
         <div class="actions" style="margin-top:8px;">
-          <button id="openRunDirBtn" disabled>Open run folder</button>
+          <button id="openRunDirBtn" disabled title="Opens the run folder on the server machine (Explorer/Finder).">Open run folder</button>
           <button id="downloadFinalMdBtn" disabled>Download final.md</button>
           <button id="downloadFinalCirBtn" disabled>Download final.cir</button>
+          <button id="downloadSchematicPngBtn" disabled>Download SPICE netlist PNG</button>
+          <button id="viewSchematicPngBtn" disabled>View SPICE netlist PNG image</button>
+          <button id="downloadAnswersMdBtn" disabled>Download AI .md files</button>
           <button id="downloadReportBtn" disabled>Download report.docx</button>
         </div>
         <pre id="log"></pre>
@@ -429,704 +521,30 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     </div>
   </main>
 
-<script>
-  // Dev-friendly live reload: if the UI server restarts (e.g. via node --watch),
-  // this SSE stream reconnects and we reload the page exactly once.
-  (function liveReload() {
-    try {
-      const es = new EventSource('/api/dev/events');
-      es.addEventListener('instance', (ev) => {
-        const id = String(ev.data || '');
-        if (!id) return;
-        const key = 'aiSchematicsUiInstanceId';
-        const prev = sessionStorage.getItem(key);
-        sessionStorage.setItem(key, id);
-        if (prev && prev !== id) location.reload();
-      });
-    } catch {
-      // ignore
-    }
-  })();
-
-  window.addEventListener('DOMContentLoaded', () => {
-
-  const DEFAULTS = ${safeJson({
-    questionPath: "examples/question.md",
-    baselineNetlistPath: "",
-    baselineImagePath: "",
-    outdir: args.defaultOutdir,
-    schematicDpi: undefined,
-    bundleIncludes: false,
-    openaiModel: "gpt-5.2",
-    grokModel: "grok-4",
-    geminiModel: "gemini-2.5-flash",
-    claudeModel: "claude-sonnet-4-5-20250929",
-  })};
-
-  const CWD = ${safeJson(args.cwd)};
-  document.getElementById('cwd').textContent = CWD;
-
-  const els = {
-    questionPath: document.getElementById('questionPath'),
-    baselineNetlistPath: document.getElementById('baselineNetlistPath'),
-    baselineImagePath: document.getElementById('baselineImagePath'),
-    questionFile: document.getElementById('questionFile'),
-    baselineNetlistFile: document.getElementById('baselineNetlistFile'),
-    baselineImageFile: document.getElementById('baselineImageFile'),
-    questionBrowseBtn: document.getElementById('questionBrowseBtn'),
-    baselineNetlistBrowseBtn: document.getElementById('baselineNetlistBrowseBtn'),
-    baselineImageBrowseBtn: document.getElementById('baselineImageBrowseBtn'),
-    questionClearBtn: document.getElementById('questionClearBtn'),
-    baselineNetlistClearBtn: document.getElementById('baselineNetlistClearBtn'),
-    baselineImageClearBtn: document.getElementById('baselineImageClearBtn'),
-    questionPickedHint: document.getElementById('questionPickedHint'),
-    baselineNetlistPickedHint: document.getElementById('baselineNetlistPickedHint'),
-    baselineImagePickedHint: document.getElementById('baselineImagePickedHint'),
-    outdir: document.getElementById('outdir'),
-    schematicDpi: document.getElementById('schematicDpi'),
-    bundleIncludes: document.getElementById('bundleIncludes'),
-    openaiModel: document.getElementById('openaiModel'),
-    grokModel: document.getElementById('grokModel'),
-    geminiModel: document.getElementById('geminiModel'),
-    claudeModel: document.getElementById('claudeModel'),
-    openaiKeyBtn: document.getElementById('openaiKeyBtn'),
-    xaiKeyBtn: document.getElementById('xaiKeyBtn'),
-    geminiKeyBtn: document.getElementById('geminiKeyBtn'),
-    anthropicKeyBtn: document.getElementById('anthropicKeyBtn'),
-    configFilename: document.getElementById('configFilename'),
-    updateCmdBtn: document.getElementById('updateCmdBtn'),
-    copyJsonPsBtn: document.getElementById('copyJsonPsBtn'),
-    copyJsonCmdBtn: document.getElementById('copyJsonCmdBtn'),
-    copyChatPsBtn: document.getElementById('copyChatPsBtn'),
-    copyChatCmdBtn: document.getElementById('copyChatCmdBtn'),
-    chatProvider: document.getElementById('chatProvider'),
-    chatMaxHistory: document.getElementById('chatMaxHistory'),
-    chatSave: document.getElementById('chatSave'),
-    cmdPreview: document.getElementById('cmdPreview'),
-    uploadSnapshotWarn: document.getElementById('uploadSnapshotWarn'),
-    status: document.getElementById('status'),
-    log: document.getElementById('log'),
-    runBtn: document.getElementById('runBtn'),
-    saveConfigBtn: document.getElementById('saveConfigBtn'),
-    loadConfigBtn: document.getElementById('loadConfigBtn'),
-    exportConfigBtn: document.getElementById('exportConfigBtn'),
-    importConfigInput: document.getElementById('importConfigInput'),
-    clearSavedBtn: document.getElementById('clearSavedBtn'),
-    openRunDirBtn: document.getElementById('openRunDirBtn'),
-    downloadFinalMdBtn: document.getElementById('downloadFinalMdBtn'),
-    downloadFinalCirBtn: document.getElementById('downloadFinalCirBtn'),
-    downloadReportBtn: document.getElementById('downloadReportBtn'),
-  };
-
-  const keysUi = {
-    modal: document.getElementById('keysModal'),
-    closeBtn: document.getElementById('keysCloseBtn'),
-    saveBtn: document.getElementById('keysSaveBtn'),
-    reloadBtn: document.getElementById('keysReloadBtn'),
-    status: document.getElementById('keysStatus'),
-    envOpenai: document.getElementById('envOpenai'),
-    envXai: document.getElementById('envXai'),
-    envGemini: document.getElementById('envGemini'),
-    envAnthropic: document.getElementById('envAnthropic'),
-    showOpenai: document.getElementById('showOpenai'),
-    showXai: document.getElementById('showXai'),
-    showGemini: document.getElementById('showGemini'),
-    showAnthropic: document.getElementById('showAnthropic'),
-    backupSelect: document.getElementById('backupSelect'),
-    restoreBtn: document.getElementById('restoreBtn'),
-  };
-
-  async function uploadPickedFile(file, kind) {
-    const fd = new FormData();
-    fd.append('file', file, file.name);
-    const url = '/api/upload?kind=' + encodeURIComponent(String(kind || ''));
-    const resp = await fetch(url, { method: 'POST', body: fd });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data?.error || ('HTTP ' + resp.status));
-    if (!data?.path) throw new Error('Upload response missing path');
-    return String(data.path);
-  }
-
-  function setPickedHint(el, text) {
-    if (!el) return;
-    el.textContent = text || '';
-  }
-
-  function setKeysStatus(msg, kind) {
-    if (!keysUi.status) return;
-    keysUi.status.textContent = msg || '';
-    keysUi.status.className = kind === 'ok' ? 'ok' : kind === 'err' ? 'err' : kind === 'warn' ? 'warn' : 'hint';
-  }
-
-  function setPasswordToggle(btn, input) {
-    if (!btn || !input) return;
-    btn.addEventListener('click', () => {
-      const isPw = input.type === 'password';
-      input.type = isPw ? 'text' : 'password';
-      btn.textContent = isPw ? 'Hide' : 'Show';
-    });
-  }
-
-  async function loadEnvIntoModal() {
-    setKeysStatus('Loading...', 'hint');
-    const resp = await fetch('/api/env');
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data?.error || ('HTTP ' + resp.status));
-    const k = data?.keys || {};
-    if (keysUi.envOpenai) keysUi.envOpenai.value = String(k.OPENAI_API_KEY || '');
-    if (keysUi.envXai) keysUi.envXai.value = String(k.XAI_API_KEY || '');
-    if (keysUi.envGemini) keysUi.envGemini.value = String(k.GEMINI_API_KEY || '');
-    if (keysUi.envAnthropic) keysUi.envAnthropic.value = String(k.ANTHROPIC_API_KEY || '');
-
-    if (keysUi.backupSelect) {
-      keysUi.backupSelect.innerHTML = '';
-      const backups = Array.isArray(data?.backups) ? data.backups : [];
-      const opt0 = document.createElement('option');
-      opt0.value = '';
-      opt0.textContent = backups.length ? '(select a backup to restore)' : '(no backups yet)';
-      keysUi.backupSelect.appendChild(opt0);
-      for (const b of backups) {
-        const name = String(b?.name || '');
-        if (!name) continue;
-        const opt = document.createElement('option');
-        opt.value = name;
-        opt.textContent = name;
-        keysUi.backupSelect.appendChild(opt);
-      }
-    }
-
-    setKeysStatus(data?.exists ? 'Loaded from .env' : 'No .env yet (will be created on save)', data?.exists ? 'ok' : 'warn');
-  }
-
-  async function saveEnvFromModal() {
-    const payload = {
-      keys: {
-        OPENAI_API_KEY: keysUi.envOpenai ? keysUi.envOpenai.value : '',
-        XAI_API_KEY: keysUi.envXai ? keysUi.envXai.value : '',
-        GEMINI_API_KEY: keysUi.envGemini ? keysUi.envGemini.value : '',
-        ANTHROPIC_API_KEY: keysUi.envAnthropic ? keysUi.envAnthropic.value : '',
-      },
-    };
-    setKeysStatus('Saving...', 'hint');
-    const resp = await fetch('/api/env', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data?.error || ('HTTP ' + resp.status));
-    setKeysStatus('Saved. Backup created if .env existed.', 'ok');
-    // Reload backup list
-    await loadEnvIntoModal();
-  }
-
-  async function restoreEnvBackup() {
-    const name = keysUi.backupSelect ? String(keysUi.backupSelect.value || '') : '';
-    if (!name) {
-      setKeysStatus('Select a backup first.', 'warn');
-      return;
-    }
-    setKeysStatus('Restoring...', 'hint');
-    const resp = await fetch('/api/env/restore', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ name }),
-    });
-    const data = await resp.json();
-    if (!resp.ok) throw new Error(data?.error || ('HTTP ' + resp.status));
-    setKeysStatus('Restored backup. Reloaded.', 'ok');
-    await loadEnvIntoModal();
-  }
-
-  function openKeysModal(focus) {
-    if (!keysUi.modal) return;
-    keysUi.modal.style.display = 'flex';
-    setKeysStatus('', 'hint');
-    loadEnvIntoModal().catch((e) => setKeysStatus(String(e?.message || e), 'err'));
-    const focusMap = {
-      openai: keysUi.envOpenai,
-      xai: keysUi.envXai,
-      gemini: keysUi.envGemini,
-      anthropic: keysUi.envAnthropic,
-    };
-    const el = focusMap[focus];
-    if (el && el.focus) setTimeout(() => el.focus(), 50);
-  }
-
-  function closeKeysModal() {
-    if (!keysUi.modal) return;
-    keysUi.modal.style.display = 'none';
-  }
-
-  function getConfig() {
-    const dpiRaw = (els.schematicDpi && els.schematicDpi.value != null) ? String(els.schematicDpi.value).trim() : '';
-    const dpi = dpiRaw ? Number.parseInt(dpiRaw, 10) : NaN;
-    return {
-      questionPath: els.questionPath.value.trim(),
-      baselineNetlistPath: els.baselineNetlistPath.value.trim(),
-      baselineImagePath: els.baselineImagePath.value.trim(),
-      outdir: els.outdir.value.trim(),
-      schematicDpi: Number.isFinite(dpi) && dpi > 0 ? dpi : undefined,
-      bundleIncludes: Boolean(els.bundleIncludes.checked),
-      openaiModel: els.openaiModel.value.trim(),
-      grokModel: els.grokModel.value.trim(),
-      geminiModel: els.geminiModel.value.trim(),
-      claudeModel: els.claudeModel.value.trim(),
-    };
-  }
-
-  function setConfig(cfg) {
-    const c = { ...DEFAULTS, ...(cfg || {}) };
-    els.questionPath.value = c.questionPath || "";
-    els.baselineNetlistPath.value = c.baselineNetlistPath || "";
-    els.baselineImagePath.value = c.baselineImagePath || "";
-    els.outdir.value = c.outdir || "runs";
-    if (els.schematicDpi) els.schematicDpi.value = (c.schematicDpi != null && String(c.schematicDpi).trim() !== '') ? String(c.schematicDpi) : '';
-    els.bundleIncludes.checked = Boolean(c.bundleIncludes);
-    els.openaiModel.value = c.openaiModel || "";
-    els.grokModel.value = c.grokModel || "";
-    els.geminiModel.value = c.geminiModel || "";
-    els.claudeModel.value = c.claudeModel || "";
-  }
-
-  function setStatus(kind, msg) {
-    els.status.className = kind === 'ok' ? 'ok' : kind === 'warn' ? 'warn' : kind === 'err' ? 'err' : 'hint';
-    els.status.textContent = msg;
-  }
-
-  function logLine(s) {
-    // Note: this JS is embedded inside a server-side template literal, so we must double-escape.
-    els.log.textContent += s + "\\n";
-    els.log.scrollTop = els.log.scrollHeight;
-  }
-
-  function clientLog(s) {
-    try {
-      logLine('[ui] ' + s);
-    } catch {
-      // ignore
-    }
-  }
-
-  window.addEventListener('error', (e) => {
-    try {
-      const msg = (e && e.message) ? String(e.message) : 'Unknown client error';
-      setStatus('err', 'Client JS error: ' + msg);
-      clientLog('ERROR: ' + msg);
-    } catch {
-      // ignore
-    }
-  });
-
-  window.addEventListener('unhandledrejection', (e) => {
-    try {
-      const msg = e && e.reason ? String(e.reason?.message || e.reason) : 'Unhandled rejection';
-      setStatus('err', 'Client JS error: ' + msg);
-      clientLog('UNHANDLED: ' + msg);
-    } catch {
-      // ignore
-    }
-  });
-
-  function clearLog() {
-    els.log.textContent = "";
-  }
-
-  function quoteCmd(arg) {
-    const s = String(arg ?? '');
-    if (!s) return '""';
-    if (!/[\s"]/g.test(s)) return s;
-    return '"' + s.replace(/"/g, '\\"') + '"';
-  }
-
-  function quotePs(arg) {
-    const s = String(arg ?? '');
-    if (!s) return '""';
-    if (!/[\s"]/g.test(s)) return s;
-    const bt = String.fromCharCode(96);
-    return '"' + s.replace(/"/g, bt + '"') + '"';
-  }
-
-  function buildArgs(cfg, q) {
-    const args = [];
-    if (cfg.questionPath) args.push('--question', q(cfg.questionPath));
-    if (cfg.baselineNetlistPath) args.push('--baseline-netlist', q(cfg.baselineNetlistPath));
-    if (cfg.baselineImagePath) args.push('--baseline-image', q(cfg.baselineImagePath));
-    if (cfg.bundleIncludes) args.push('--bundle-includes');
-    if (cfg.outdir) args.push('--outdir', q(cfg.outdir));
-    if (cfg.schematicDpi) args.push('--schematic-dpi', q(cfg.schematicDpi));
-    if (cfg.openaiModel) args.push('--openai-model', q(cfg.openaiModel));
-    if (cfg.grokModel) args.push('--grok-model', q(cfg.grokModel));
-    if (cfg.geminiModel) args.push('--gemini-model', q(cfg.geminiModel));
-    if (cfg.claudeModel) args.push('--claude-model', q(cfg.claudeModel));
-    return args;
-  }
-
-  function buildChatArgs(cfg, q) {
-    // Chat CLI uses baseline context + models (no --question, no --bundle-includes).
-    const args = [];
-    if (cfg.baselineNetlistPath) args.push('--baseline-netlist', q(cfg.baselineNetlistPath));
-    if (cfg.baselineImagePath) args.push('--baseline-image', q(cfg.baselineImagePath));
-    if (cfg.openaiModel) args.push('--openai-model', q(cfg.openaiModel));
-    if (cfg.grokModel) args.push('--grok-model', q(cfg.grokModel));
-    if (cfg.geminiModel) args.push('--gemini-model', q(cfg.geminiModel));
-    if (cfg.claudeModel) args.push('--claude-model', q(cfg.claudeModel));
-    return args;
-  }
-
-  async function copyText(text) {
-    try {
-      await navigator.clipboard.writeText(text);
-      setStatus('ok', 'Copied to clipboard.');
-    } catch {
-      // Fallback for browsers/environments where the Clipboard API is blocked.
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.left = '-10000px';
-        ta.style.top = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        const ok = document.execCommand && document.execCommand('copy');
-        document.body.removeChild(ta);
-        if (ok) {
-          setStatus('ok', 'Copied to clipboard.');
-          return;
-        }
-      } catch {
-        // ignore
-      }
-      setStatus('err', 'Clipboard copy failed. Select the text and copy manually.');
-    }
-  }
-
-  function updateCommandPreview() {
-    const cfg = getConfig();
-    const fname = (els.configFilename.value || '').trim() || 'ai-schematics.config.json';
-    const basePs = ['node', 'dist/index.js', 'run', '--no-prompts'];
-    const baseCmd = ['node', 'dist\\index.js', 'run', '--no-prompts'];
-
-    const baseChatPs = ['node', 'dist/index.js', 'chat'];
-    const baseChatCmd = ['node', 'dist\\index.js', 'chat'];
-
-    const jsonPs = [...basePs, '--config', quotePs(fname)].join(' ');
-    const jsonCmd = [...baseCmd, '--config', quoteCmd(fname)].join(' ');
-    const expPs = [...basePs, ...buildArgs(cfg, quotePs)].join(' ');
-    const expCmd = [...baseCmd, ...buildArgs(cfg, quoteCmd)].join(' ');
-
-    const chatProvider = String((els.chatProvider && els.chatProvider.value) || 'openai').trim() || 'openai';
-    const chatMaxHistory = String((els.chatMaxHistory && els.chatMaxHistory.value) || '10').trim() || '10';
-    const chatSave = Boolean(els.chatSave && els.chatSave.checked);
-    const chatArgsPs = ['--provider', quotePs(chatProvider), '--max-history', quotePs(chatMaxHistory), ...buildChatArgs(cfg, quotePs)];
-    const chatArgsCmd = ['--provider', quoteCmd(chatProvider), '--max-history', quoteCmd(chatMaxHistory), ...buildChatArgs(cfg, quoteCmd)];
-    if (chatSave) {
-      chatArgsPs.push('--save');
-      chatArgsCmd.push('--save');
-      if (cfg.outdir) {
-        chatArgsPs.push('--outdir', quotePs(cfg.outdir));
-        chatArgsCmd.push('--outdir', quoteCmd(cfg.outdir));
-      }
-    }
-
-    const chatPs = [...baseChatPs, ...chatArgsPs].join(' ');
-    const chatCmd = [...baseChatCmd, ...chatArgsCmd].join(' ');
-
-    els.cmdPreview.textContent =
-      'Config JSON command:\\n' +
-      '  PowerShell: ' + jsonPs + '\\n' +
-      '  cmd.exe:    ' + jsonCmd + '\\n\\n' +
-      'Explicit-params command:\\n' +
-      '  PowerShell: ' + expPs + '\\n' +
-      '  cmd.exe:    ' + expCmd + '\n\n' +
-      'Interactive chat command:\n' +
-      '  PowerShell: ' + chatPs + '\n' +
-      '  cmd.exe:    ' + chatCmd;
-
-    // Show a warning if the config references UI-uploaded snapshot paths.
-    try {
-      const paths = [
-        String(cfg.questionPath || ''),
-        String(cfg.baselineNetlistPath || ''),
-        String(cfg.baselineImagePath || ''),
-      ].filter(Boolean);
-      const hasUploads = paths.some((p) => {
-        const s = String(p).replace(/\\/g, '/').toLowerCase();
-        return s.includes('/.ui_uploads/') || s.startsWith('.ui_uploads/') || s.includes('\\.ui_uploads\\') || s.includes('/.ui_uploads\\');
-      });
-      if (els.uploadSnapshotWarn) els.uploadSnapshotWarn.style.display = hasUploads ? 'block' : 'none';
-    } catch {
-      if (els.uploadSnapshotWarn) els.uploadSnapshotWarn.style.display = 'none';
-    }
-
-    els.copyJsonPsBtn.onclick = () => copyText(jsonPs);
-    els.copyJsonCmdBtn.onclick = () => copyText(jsonCmd);
-    if (els.copyChatPsBtn) els.copyChatPsBtn.onclick = () => copyText(chatPs);
-    if (els.copyChatCmdBtn) els.copyChatCmdBtn.onclick = () => copyText(chatCmd);
-  }
-
-  function downloadLink(filePath) {
-    const u = new URL('/api/file', window.location.origin);
-    u.searchParams.set('path', filePath);
-    return u.toString();
-  }
-
-  let lastRun = null;
-
-  async function run() {
-    clearLog();
-    setStatus('hint', 'Running...');
-    els.runBtn.disabled = true;
-    els.openRunDirBtn.disabled = true;
-    els.downloadFinalMdBtn.disabled = true;
-    els.downloadFinalCirBtn.disabled = true;
-    els.downloadReportBtn.disabled = true;
-
-    try {
-      const cfg = getConfig();
-      const resp = await fetch('/api/run', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(cfg),
-      });
-      const data = await resp.json();
-      if (!resp.ok) throw new Error(data?.error || ('HTTP ' + resp.status));
-
-      lastRun = data;
-      setStatus('ok', 'Done. Run folder: ' + data.runDir);
-      (data.logs || []).forEach(logLine);
-
-      els.openRunDirBtn.disabled = false;
-      els.openRunDirBtn.onclick = async () => {
-        await fetch('/api/open', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ path: data.runDir }),
-        });
-      };
-
-      if (data.outputs?.finalMd) {
-        els.downloadFinalMdBtn.disabled = false;
-        els.downloadFinalMdBtn.onclick = () => window.open(downloadLink(data.outputs.finalMd), '_blank');
-      }
-      if (data.outputs?.finalCir) {
-        els.downloadFinalCirBtn.disabled = false;
-        els.downloadFinalCirBtn.onclick = () => window.open(downloadLink(data.outputs.finalCir), '_blank');
-      }
-      if (data.outputs?.reportDocx) {
-        els.downloadReportBtn.disabled = false;
-        els.downloadReportBtn.onclick = () => window.open(downloadLink(data.outputs.reportDocx), '_blank');
-      }
-    } catch (e) {
-      setStatus('err', String(e?.message || e));
-      logLine(String(e?.stack || e));
-    } finally {
-      els.runBtn.disabled = false;
-    }
-  }
-
-  async function pickAndUpload(kind) {
-    try {
-      let fileEl, pathEl, hintEl;
-      if (kind === 'question') {
-        fileEl = els.questionFile;
-        pathEl = els.questionPath;
-        hintEl = els.questionPickedHint;
-      } else if (kind === 'baselineNetlist') {
-        fileEl = els.baselineNetlistFile;
-        pathEl = els.baselineNetlistPath;
-        hintEl = els.baselineNetlistPickedHint;
-      } else {
-        fileEl = els.baselineImageFile;
-        pathEl = els.baselineImagePath;
-        hintEl = els.baselineImagePickedHint;
-      }
-
-      const f = fileEl.files && fileEl.files[0];
-      if (!f) return;
-      clientLog('Picked file for ' + kind + ': ' + f.name + ' (' + f.size + ' bytes)');
-      setStatus('hint', 'Uploading ' + f.name + '...');
-      const savedPath = await uploadPickedFile(f, kind);
-      pathEl.value = savedPath;
-      setPickedHint(hintEl, 'Picked: ' + f.name);
-      setStatus('ok', 'Uploaded. (Snapshot — re-upload after edits.)');
-      clientLog('Uploaded ' + kind + ' -> ' + savedPath);
-      updateCommandPreview();
-    } catch (e) {
-      setStatus('err', String(e?.message || e));
-      clientLog('Upload failed for ' + kind + ': ' + String(e?.message || e));
-    }
-  }
-
-  function clearPicked(kind) {
-    if (kind === 'question') {
-      els.questionPath.value = '';
-      els.questionFile.value = '';
-      setPickedHint(els.questionPickedHint, '');
-    } else if (kind === 'baselineNetlist') {
-      els.baselineNetlistPath.value = '';
-      els.baselineNetlistFile.value = '';
-      setPickedHint(els.baselineNetlistPickedHint, '');
-    } else {
-      els.baselineImagePath.value = '';
-      els.baselineImageFile.value = '';
-      setPickedHint(els.baselineImagePickedHint, '');
-    }
-    clientLog('Cleared ' + kind);
-    updateCommandPreview();
-  }
-
-  function saveLocal() {
-    try {
-      localStorage.setItem('ai-schematics-ensemble-ui-config', JSON.stringify(getConfig(), null, 2));
-      setStatus('ok', 'Saved config to localStorage.');
-    } catch (e) {
-      setStatus('err', 'Save failed (localStorage blocked): ' + String(e?.message || e));
-    }
-  }
-
-  function loadLocal() {
-    let raw = '';
-    try {
-      raw = localStorage.getItem('ai-schematics-ensemble-ui-config') || '';
-    } catch (e) {
-      setStatus('err', 'Load failed (localStorage blocked): ' + String(e?.message || e));
-      return;
-    }
-    if (!raw) {
-      setStatus('warn', 'No saved config found.');
-      return;
-    }
-    try {
-      setConfig(JSON.parse(raw));
-      setStatus('ok', 'Loaded saved config.');
-    } catch (e) {
-      setStatus('err', 'Failed to parse saved config: ' + String(e?.message || e));
-    }
-  }
-
-  function exportJson() {
-    const blob = new Blob([JSON.stringify(getConfig(), null, 2)], { type: 'application/json' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    const fname = (els.configFilename?.value || '').trim() || 'ai-schematics.config.json';
-    const downloadName = fname.split(/[/\\]+/g).filter(Boolean).slice(-1)[0] || fname;
-    a.download = downloadName;
-    a.click();
-    URL.revokeObjectURL(a.href);
-    updateCommandPreview();
-  }
-
-  async function importJson(file) {
-    const text = await file.text();
-    const cfg = JSON.parse(text);
-    setConfig(cfg);
-    setStatus('ok', 'Imported config JSON.');
-  }
-
-  function clearSaved() {
-    try {
-      localStorage.removeItem('ai-schematics-ensemble-ui-config');
-      setStatus('ok', 'Cleared saved config.');
-    } catch (e) {
-      setStatus('err', 'Clear failed (localStorage blocked): ' + String(e?.message || e));
-    }
-  }
-
-  function on(el, evt, fn) {
-    if (!el || !el.addEventListener) return;
-    el.addEventListener(evt, fn);
-  }
-
-  on(els.runBtn, 'click', run);
-
-  // API key buttons
-  on(els.openaiKeyBtn, 'click', () => openKeysModal('openai'));
-  on(els.xaiKeyBtn, 'click', () => openKeysModal('xai'));
-  on(els.geminiKeyBtn, 'click', () => openKeysModal('gemini'));
-  on(els.anthropicKeyBtn, 'click', () => openKeysModal('anthropic'));
-
-  on(keysUi.closeBtn, 'click', closeKeysModal);
-  on(keysUi.modal, 'click', (e) => {
-    if (e && e.target === keysUi.modal) closeKeysModal();
-  });
-  on(keysUi.reloadBtn, 'click', () => loadEnvIntoModal().catch((e) => setKeysStatus(String(e?.message || e), 'err')));
-  on(keysUi.saveBtn, 'click', () => saveEnvFromModal().catch((e) => setKeysStatus(String(e?.message || e), 'err')));
-  on(keysUi.restoreBtn, 'click', () => restoreEnvBackup().catch((e) => setKeysStatus(String(e?.message || e), 'err')));
-
-  setPasswordToggle(keysUi.showOpenai, keysUi.envOpenai);
-  setPasswordToggle(keysUi.showXai, keysUi.envXai);
-  setPasswordToggle(keysUi.showGemini, keysUi.envGemini);
-  setPasswordToggle(keysUi.showAnthropic, keysUi.envAnthropic);
-
-  // Browse buttons (upload to server, then fill path)
-  // Note: browse is handled by <label for="...">; change events below trigger upload.
-
-  on(els.questionFile, 'change', () => pickAndUpload('question'));
-  on(els.baselineNetlistFile, 'change', () => pickAndUpload('baselineNetlist'));
-  on(els.baselineImageFile, 'change', () => pickAndUpload('baselineImage'));
-
-  on(els.questionClearBtn, 'click', () => clearPicked('question'));
-  on(els.baselineNetlistClearBtn, 'click', () => clearPicked('baselineNetlist'));
-  on(els.baselineImageClearBtn, 'click', () => clearPicked('baselineImage'));
-  on(els.saveConfigBtn, 'click', saveLocal);
-  on(els.loadConfigBtn, 'click', loadLocal);
-  on(els.exportConfigBtn, 'click', exportJson);
-  on(els.clearSavedBtn, 'click', clearSaved);
-  on(els.importConfigInput, 'change', (e) => {
-    const f = e.target.files && e.target.files[0];
-    if (f) importJson(f);
-  });
-
-  on(els.updateCmdBtn, 'click', updateCommandPreview);
-
-  // Keep preview in sync as user edits
-  for (const id of ['questionPath','baselineNetlistPath','baselineImagePath','outdir','schematicDpi','bundleIncludes','openaiModel','grokModel','geminiModel','claudeModel','configFilename','chatProvider','chatMaxHistory','chatSave']) {
-    const el = document.getElementById(id);
-    if (!el) continue;
-    el.addEventListener('input', () => updateCommandPreview());
-    el.addEventListener('change', () => updateCommandPreview());
-  }
-
-  setConfig(DEFAULTS);
-  updateCommandPreview();
-  setStatus('hint', 'Ready.');
-  clientLog('Client JS initialized.');
-
-  });
-</script>
-
-<div id="keysModal" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.55); padding: 16px;">
-  <div style="width:min(780px, 100%); background: rgba(20,20,20,.92); border:1px solid rgba(127,127,127,.35); border-radius: 14px; padding: 14px;">
-    <div style="display:flex; justify-content:space-between; align-items:baseline; gap: 12px;">
-      <div style="font-weight:700;">API Keys (.env)</div>
-      <button type="button" id="keysCloseBtn" title="Close" style="padding: 8px 10px;">✕</button>
-    </div>
-    <div class="hint" style="margin: 6px 0 12px;">These values are read from and written to <span class="mono">.env</span> on this machine.</div>
-
-    <div class="row"><label>OPENAI_API_KEY</label><div style="display:flex; gap:8px; align-items:center;"><input id="envOpenai" type="password" placeholder="(optional)" /><button type="button" id="showOpenai">Show</button></div></div>
-    <div class="row"><label>XAI_API_KEY</label><div style="display:flex; gap:8px; align-items:center;"><input id="envXai" type="password" placeholder="(optional)" /><button type="button" id="showXai">Show</button></div></div>
-    <div class="row"><label>GEMINI_API_KEY</label><div style="display:flex; gap:8px; align-items:center;"><input id="envGemini" type="password" placeholder="(optional)" /><button type="button" id="showGemini">Show</button></div></div>
-    <div class="row"><label>ANTHROPIC_API_KEY</label><div style="display:flex; gap:8px; align-items:center;"><input id="envAnthropic" type="password" placeholder="(optional)" /><button type="button" id="showAnthropic">Show</button></div></div>
-
-    <div class="actions" style="margin-top: 12px;">
-      <button type="button" class="primary" id="keysSaveBtn">Save .env</button>
-      <button type="button" id="keysReloadBtn">Reload</button>
-      <span class="hint" id="keysStatus" style="align-self:center;"></span>
-    </div>
-
-    <div style="margin-top: 14px;">
-      <div style="font-weight:700; margin-bottom: 6px;">Backups</div>
-      <div class="hint" style="margin-bottom: 6px;">If a key is accidentally deleted, restore a previous .env backup.</div>
-      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-        <select id="backupSelect" style="min-width: 380px; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(127,127,127,.35); background: rgba(127,127,127,.06);"></select>
-        <button type="button" id="restoreBtn">Restore selected</button>
+  <div id="keysModal" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; background: rgba(0,0,0,.55); padding: 16px;">
+    <div style="width:min(780px, 100%); background: rgba(20,20,20,.92); border:1px solid rgba(127,127,127,.35); border-radius: 14px; padding: 14px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; gap: 12px;">
+        <div style="font-weight:700;">API Keys</div>
+        <button type="button" id="keysCloseBtn" title="Close" style="padding: 8px 10px;">✕</button>
+      </div>
+      <div class="hint" style="margin: 6px 0 12px;">Stored in browser <span class="mono">localStorage</span> for the online page, and sent to the server only when you click <b>Run</b>.</div>
+
+      <form onsubmit="return false">
+        <div class="row"><label>OPENAI_API_KEY</label><div style="display:flex; gap:8px; align-items:center;"><input id="envOpenai" type="password" placeholder="(optional)" autocomplete="off" /><button type="button" id="showOpenai">Show</button></div></div>
+        <div class="row"><label>XAI_API_KEY</label><div style="display:flex; gap:8px; align-items:center;"><input id="envXai" type="password" placeholder="(optional)" autocomplete="off" /><button type="button" id="showXai">Show</button></div></div>
+        <div class="row"><label>GEMINI_API_KEY</label><div style="display:flex; gap:8px; align-items:center;"><input id="envGemini" type="password" placeholder="(optional)" autocomplete="off" /><button type="button" id="showGemini">Show</button></div></div>
+        <div class="row"><label>ANTHROPIC_API_KEY</label><div style="display:flex; gap:8px; align-items:center;"><input id="envAnthropic" type="password" placeholder="(optional)" autocomplete="off" /><button type="button" id="showAnthropic">Show</button></div></div>
+      </form>
+
+      <div class="actions" style="margin-top: 12px;">
+        <button type="button" class="primary" id="keysSaveBtn">Save</button>
+        <span class="hint" id="keysStatus" style="align-self:center;"></span>
       </div>
     </div>
   </div>
-</div>
 
+  <script id="uiInit" type="application/json">${safeJson({ cwd: args.cwd, defaults })}</script>
+  <script type="module" src="/assets/onlineClient.js"></script>
 </body>
 </html>`;
 }
@@ -1185,6 +603,18 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
         const ok = await fs.pathExists(p);
         if (!ok) {
           sendText(res, 404, "text/plain; charset=utf-8", "offline-help.html not found");
+          return;
+        }
+        const body = await fs.readFile(p, "utf8");
+        sendText(res, 200, "text/html; charset=utf-8", body);
+        return;
+      }
+
+      if (method === "GET" && pathname === "/online-help.html") {
+        const p = path.resolve(cwd, "online-help.html");
+        const ok = await fs.pathExists(p);
+        if (!ok) {
+          sendText(res, 404, "text/plain; charset=utf-8", "online-help.html not found");
           return;
         }
         const body = await fs.readFile(p, "utf8");
@@ -1275,11 +705,28 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
         return;
       }
 
+      if (method === "GET" && pathname === "/assets/onlineClient.js") {
+        try {
+          const p = path.join(cwd, "dist", "ui", "onlineClient.js");
+          const ok = await fs.pathExists(p);
+          if (!ok) {
+            sendText(res, 404, "text/plain; charset=utf-8", "onlineClient.js not found");
+            return;
+          }
+          const body = await fs.readFile(p, "utf8");
+          sendText(res, 200, "application/javascript; charset=utf-8", body);
+        } catch (e: any) {
+          sendText(res, 500, "text/plain; charset=utf-8", String(e?.message ?? e));
+        }
+        return;
+      }
+
       if (method === "POST" && pathname === "/api/upload") {
         try {
           const contentType = String(req.headers["content-type"] ?? "");
           const u = new URL(req.url || "/api/upload", `http://${String(req.headers.host ?? "localhost")}`);
           const kind = getSingleQueryParam(u, "kind");
+          const kindIsInclude = kind === "include";
           const kindBase =
             kind === "question"
               ? "question"
@@ -1305,6 +752,23 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           // Prefer multipart/form-data, but support a raw-body fallback.
           if (contentType.toLowerCase().startsWith("multipart/form-data")) {
             const received = await parseMultipartSingleFile(req, { uploadDir });
+            if (kindIsInclude) {
+              const currentDir = path.join(uploadRootDir, "current");
+              await fs.mkdirp(currentDir);
+              const safeName = sanitizeFileNamePreserveSpaces(received.originalFilename || received.filename || "include.lib");
+              const stableAbsPath = path.join(currentDir, safeName);
+              await fs.move(received.filePath, stableAbsPath, { overwrite: true });
+              await fs.remove(uploadDir).catch(() => undefined);
+              sendJson(res, 200, {
+                ok: true,
+                path: toUserPath(stableAbsPath),
+                filename: path.basename(stableAbsPath),
+                mimeType: received.mimeType,
+                originalFilename: received.originalFilename,
+                kind,
+              });
+              return;
+            }
             if (kindBase) {
               const ext0 = String(path.extname(received.filename || "")).toLowerCase();
               const ext = ext0 && ext0.length <= 16 ? ext0 : "";
@@ -1319,7 +783,7 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
                 path: toUserPath(stableAbsPath),
                 filename: path.basename(stableAbsPath),
                 mimeType: received.mimeType,
-                originalFilename: received.filename,
+                originalFilename: received.originalFilename,
                 kind,
               });
               return;
@@ -1339,10 +803,26 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
             return;
           }
 
-          const safe = sanitizeFileName(requested);
+          const safe = kindIsInclude ? sanitizeFileNamePreserveSpaces(requested) : sanitizeFileName(requested);
           const body = await readRequestBody(req);
           if (!body || body.length === 0) {
             sendJson(res, 400, { error: "Empty body" });
+            return;
+          }
+
+          if (kindIsInclude) {
+            const currentDir = path.join(uploadRootDir, "current");
+            await fs.mkdirp(currentDir);
+            const stableAbsPath = path.join(currentDir, safe || "include.lib");
+            await fs.writeFile(stableAbsPath, body);
+            sendJson(res, 200, {
+              ok: true,
+              path: toUserPath(stableAbsPath),
+              filename: path.basename(stableAbsPath),
+              mimeType: contentType || "application/octet-stream",
+              originalFilename: requested,
+              kind,
+            });
             return;
           }
 
@@ -1465,6 +945,11 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           grokModel: payload.grokModel ? String(payload.grokModel) : undefined,
           geminiModel: payload.geminiModel ? String(payload.geminiModel) : undefined,
           claudeModel: payload.claudeModel ? String(payload.claudeModel) : undefined,
+          enabledProviders: Array.isArray(payload.enabledProviders)
+            ? payload.enabledProviders
+                .map((p: any) => String(p || "").trim().toLowerCase())
+                .filter((p: string) => p === "openai" || p === "xai" || p === "google" || p === "anthropic")
+            : undefined,
           allowPrompts: false,
         };
 
@@ -1480,12 +965,48 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           error: (m) => logs.push("ERROR: " + m),
         };
 
+        // Online page can optionally supply API keys (stored in browser localStorage).
+        // Apply them to this process for the duration of the run, then restore.
+        const apiKeys = payload?.apiKeys && typeof payload.apiKeys === "object" ? (payload.apiKeys as Record<string, unknown>) : undefined;
+        const keyNames: EnvKeyName[] = ["OPENAI_API_KEY", "XAI_API_KEY", "GEMINI_API_KEY", "ANTHROPIC_API_KEY"];
+        const prevEnv: Partial<Record<EnvKeyName, string | undefined>> = {};
+        if (apiKeys) {
+          for (const k of keyNames) prevEnv[k] = process.env[k];
+          for (const k of keyNames) {
+            const v = apiKeys[k];
+            if (typeof v === "string" && v.trim()) process.env[k] = v.trim();
+          }
+        }
+
         let result: RunBatchResult;
         try {
           result = await runBatch(runOpts, logger);
         } catch (e: any) {
-          sendJson(res, 500, { error: String(e?.message ?? e), logs });
+          // Even if the run fails, runBatch typically created a run directory and logged it.
+          // Returning it lets the UI enable "Open run folder" for troubleshooting.
+          let runDir: string | undefined;
+          for (const line of logs) {
+            if (typeof line === "string" && line.startsWith("Run directory:")) {
+              const maybe = line.slice("Run directory:".length).trim();
+              if (maybe) {
+                runDir = maybe;
+                break;
+              }
+            }
+          }
+
+          if (runDir) allowedRunDirs.add(path.resolve(runDir));
+
+          sendJson(res, 500, { error: String(e?.message ?? e), logs, runDir });
           return;
+        } finally {
+          if (apiKeys) {
+            for (const k of keyNames) {
+              const prior = prevEnv[k];
+              if (typeof prior === "string") process.env[k] = prior;
+              else delete process.env[k];
+            }
+          }
         }
 
         allowedRunDirs.add(path.resolve(result.runDir));
@@ -1511,7 +1032,13 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
 
         try {
           if (process.platform === "win32") {
-            await execa("explorer.exe", [abs]);
+            try {
+              await execa("explorer.exe", [abs]);
+            } catch {
+              // Fallback that tends to work even when explorer.exe isn't on PATH
+              // or when process launch behavior is finicky.
+              await execa("cmd", ["/c", "start", "", abs]);
+            }
           } else if (process.platform === "darwin") {
             await execa("open", [abs]);
           } else {
@@ -1568,6 +1095,110 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
         });
 
         fs.createReadStream(abs).pipe(res);
+        return;
+      }
+
+      if (method === "GET" && pathname === "/api/view") {
+        const p = String(parsed.query.path ?? "");
+        if (!p) {
+          sendJson(res, 400, { error: "path is required" });
+          return;
+        }
+
+        const abs = path.resolve(p);
+        const allowed = Array.from(allowedRunDirs).some((d) => isWithin(abs, d));
+        if (!allowed) {
+          sendJson(res, 403, { error: "Not an allowed file" });
+          return;
+        }
+
+        const ok = await fs.pathExists(abs);
+        if (!ok) {
+          sendJson(res, 404, { error: "File not found" });
+          return;
+        }
+
+        // Basic content-type (same as /api/file, but served inline)
+        const ext = path.extname(abs).toLowerCase();
+        const ct =
+          ext === ".md" || ext === ".txt"
+            ? "text/plain; charset=utf-8"
+            : ext === ".json"
+              ? "application/json; charset=utf-8"
+              : ext === ".png"
+                ? "image/png"
+                : ext === ".jpg" || ext === ".jpeg"
+                  ? "image/jpeg"
+                  : ext === ".webp"
+                    ? "image/webp"
+                    : ext === ".svg"
+                      ? "image/svg+xml; charset=utf-8"
+                      : "application/octet-stream";
+
+        res.writeHead(200, {
+          "content-type": ct,
+          "cache-control": "no-store",
+        });
+
+        fs.createReadStream(abs).pipe(res);
+        return;
+      }
+
+      if (method === "GET" && pathname === "/api/answers-md") {
+        const runDirRaw = String(parsed.query.runDir ?? "");
+        if (!runDirRaw) {
+          sendJson(res, 400, { error: "runDir is required" });
+          return;
+        }
+
+        const runDirAbs = path.resolve(runDirRaw);
+        const allowed = Array.from(allowedRunDirs).some((d) => isWithin(runDirAbs, d));
+        if (!allowed) {
+          sendJson(res, 403, { error: "Not an allowed run directory" });
+          return;
+        }
+
+        const answersDir = path.join(runDirAbs, "answers");
+        const ok = await fs.pathExists(answersDir);
+        if (!ok) {
+          sendJson(res, 404, { error: "answers folder not found" });
+          return;
+        }
+
+        const entries = await fs.readdir(answersDir);
+        const mdFiles = entries
+          .filter((n) => typeof n === "string" && n.toLowerCase().endsWith(".md"))
+          .sort((a, b) => a.localeCompare(b));
+
+        if (!mdFiles.length) {
+          sendJson(res, 404, { error: "No .md files found in answers folder" });
+          return;
+        }
+
+        const base = path.basename(runDirAbs) || "run";
+        const zipName = `answers_md_${base}.zip`;
+
+        res.writeHead(200, {
+          "content-type": "application/zip",
+          "cache-control": "no-store",
+          "content-disposition": `attachment; filename="${zipName}"`,
+        });
+
+        const zip = archiver("zip", { zlib: { level: 9 } });
+        zip.on("error", (err: any) => {
+          try {
+            res.destroy(err);
+          } catch {
+            // ignore
+          }
+        });
+
+        zip.pipe(res);
+        for (const name of mdFiles) {
+          zip.file(path.join(answersDir, name), { name });
+        }
+
+        void zip.finalize();
         return;
       }
 

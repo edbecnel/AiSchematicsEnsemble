@@ -196,6 +196,7 @@ program
         grokModel: merged?.grokModel ?? opts.grokModel,
         geminiModel: merged?.geminiModel ?? opts.geminiModel,
         claudeModel: merged?.claudeModel ?? opts.claudeModel,
+        enabledProviders: merged?.enabledProviders,
         allowPrompts: Boolean(opts.prompts),
       });
 

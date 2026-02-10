@@ -324,6 +324,10 @@ For a more readable, browser-friendly version, open help.html.
 
 CLI install/setup instructions (separate page): **cli-help.html**.
 
+Offline helper page help (separate page): **offline-help.html**.
+
+Online/server UI help (separate page): **online-help.html**.
+
 If you edit Help.md, refresh help.html with:
 
 ```powershell
@@ -440,7 +444,10 @@ Notes:
 - File paths you type into the UI are resolved by the server process, relative to the server’s current working directory.
 - The UI can download `final.md`, `final.cir`, and `report.docx`, and can open the run folder in Explorer.
 
-Tip: the UI’s “Copy/paste commands” section can generate both batch (`run`) and interactive chat (`chat`) commands.
+Notes (online UI vs offline helper):
+
+- The online/server UI (`/online.html`) is upload-first and is meant to run batch mode directly.
+- The offline helper page (`offline.html`) is where you’ll find copy/paste-ready CLI commands (batch `run` and interactive `chat`).
 
 ## Offline mode (no server)
 
@@ -510,7 +517,7 @@ npm run ui
 3. In the UI:
 
 - Fill inputs and click Run, or import a config JSON.
-- Use the “Copy/paste commands” section if you want to run the exact same config in a terminal instead.
+- Export a config JSON if you want to run the exact same config in a terminal later.
 
 4. Verify outputs:
 
