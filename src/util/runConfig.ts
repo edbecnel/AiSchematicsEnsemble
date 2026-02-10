@@ -21,6 +21,8 @@ const RunConfigSchema = z
       .optional(),
     bundleIncludes: z.boolean().optional(),
     outdir: z.string().optional(),
+    /** DPI to render schematic.png (Graphviz). Higher = larger PNG. */
+    schematicDpi: z.coerce.number().int().min(1).max(2400).optional(),
     openaiModel: z.string().optional(),
     grokModel: z.string().optional(),
     geminiModel: z.string().optional(),
@@ -85,6 +87,7 @@ export function mergeRunConfig(cli: {
   baselineImage?: unknown;
   bundleIncludes?: unknown;
   outdir?: unknown;
+  schematicDpi?: unknown;
   openaiModel?: unknown;
   grokModel?: unknown;
   geminiModel?: unknown;
@@ -108,6 +111,12 @@ export function mergeRunConfig(cli: {
 
   const outdir = cleanString(cli.outdir);
   if (outdir) merged.outdir = outdir;
+
+  const schematicDpiRaw = cleanString(cli.schematicDpi);
+  if (schematicDpiRaw) {
+    const n = Number.parseInt(schematicDpiRaw, 10);
+    if (Number.isFinite(n) && n > 0) merged.schematicDpi = n;
+  }
 
   const om = cleanString(cli.openaiModel);
   if (om) merged.openaiModel = om;

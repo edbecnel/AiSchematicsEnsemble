@@ -209,17 +209,24 @@
           <li>Git (to clone the repo).</li>
           <li>
             Optional: Graphviz (<code>dot</code>) to auto-generate
-            <code>schematic.png</code> (otherwise you still get
-            <code>schematic.dot</code>).
+            <code>schematic.png</code> / <code>schematic.svg</code> (otherwise
+            you still get <code>schematic.dot</code>).
           </li>
         </ul>
 
         <h3 id="graphviz-windows">Optional: Install Graphviz (Windows)</h3>
         <p>
           Graphviz is only needed if you want the tool to also render
-          <code>schematic.png</code>. Without it, you will still get
-          <code>schematic.dot</code>.
+          <code>schematic.png</code> / <code>schematic.svg</code>. Without it,
+          you will still get <code>schematic.dot</code>.
         </p>
+        <div class="note">
+          If you need a higher-resolution PNG, either re-render a run’s
+          <code>schematic.dot</code> with:
+          <code>dot -Gdpi=300 -Tpng schematic.dot -o schematic_300dpi.png</code>
+          or run the CLI with <code>--schematic-dpi 300</code> (or set
+          <code>schematicDpi</code> in the JSON config).
+        </div>
         <ol style="color: var(--muted); line-height: 1.55">
           <li>
             Download the official Windows x64 installer from

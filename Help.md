@@ -16,7 +16,7 @@ npm run regen:help-html
 
 - Node.js 18+ recommended
 - API keys for one or more providers in a `.env` file
-- Optional: Graphviz (`dot`) if you want `schematic.png` auto-rendered
+- Optional: Graphviz (`dot`) if you want `schematic.png` / `schematic.svg` auto-rendered
 
 ## Where to run commands
 
@@ -300,8 +300,29 @@ Each run creates a timestamped folder under `runs/` (or `--outdir`). Typical con
 - `answers/*.md` — raw responses as Markdown
 - `schematic.dot` — connectivity diagram (Graphviz)
 - `schematic.png` — rendered diagram (only if Graphviz `dot` is installed)
+- `schematic.svg` — rendered diagram as SVG (best for zooming/printing; only if Graphviz `dot` is installed)
 - `baseline.cir` — saved baseline netlist (if provided)
 - `baseline_schematic.*` — saved image (if provided)
+
+### Higher-resolution `schematic.png`
+
+Prefer `schematic.svg` for zooming/printing.
+
+If you specifically want a higher-resolution PNG, you have two options:
+
+1. Set DPI in the CLI:
+
+```powershell
+node dist/index.js run --question question.md --schematic-dpi 300
+```
+
+2. Or re-render a run’s existing `schematic.dot` with Graphviz:
+
+```powershell
+dot -Gdpi=300 -Tpng runs\<run_id>\schematic.dot -o runs\<run_id>\schematic_300dpi.png
+```
+
+Config JSON: you can also set `schematicDpi` (number).
 
 ### Model selection
 
@@ -405,7 +426,7 @@ If you use provider `ensemble`, each turn also writes per-turn artifacts under `
 
 ### “Graphviz 'dot' not found”
 
-That’s expected if Graphviz isn’t installed. You will still get `schematic.dot`. Install Graphviz and ensure `dot` is on your PATH to also get `schematic.png`.
+That’s expected if Graphviz isn’t installed. You will still get `schematic.dot`. Install Graphviz and ensure `dot` is on your PATH to also get `schematic.png` and `schematic.svg`.
 
 #### Install Graphviz on Windows
 

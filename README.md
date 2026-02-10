@@ -19,6 +19,21 @@ CLI install/setup guide (HTML, GitHub Pages-friendly): **cli-help.html**.
   - `schematic.png` (if Graphviz `dot` is installed)
 - Generates a Word report: `report.docx`
 
+### Higher-resolution schematic.png
+
+- Best for zooming/printing: use `schematic.svg` (also generated when Graphviz is installed).
+- For a higher-res PNG, rerun Graphviz with a higher DPI:
+
+```powershell
+dot -Gdpi=300 -Tpng runs\<run_id>\schematic.dot -o runs\<run_id>\schematic_300dpi.png
+```
+
+Or set it at run time:
+
+```powershell
+node dist/index.js run --question question.md --schematic-dpi 300
+```
+
 ## Prereqs
 
 - Node.js 18+ recommended

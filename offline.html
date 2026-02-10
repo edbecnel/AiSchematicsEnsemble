@@ -372,6 +372,22 @@
             <label>Outdir</label><input id="outdir" type="text" value="runs" />
           </div>
           <div class="row">
+            <label>Schematic DPI</label>
+            <div>
+              <input
+                id="schematicDpi"
+                type="text"
+                value=""
+                placeholder="(optional) e.g. 300"
+              />
+              <div class="hint">
+                Controls <span class="mono">schematic.png</span> resolution
+                (Graphviz). Prefer <span class="mono">schematic.svg</span> for
+                zooming/printing.
+              </div>
+            </div>
+          </div>
+          <div class="row">
             <label>Bundle includes</label
             ><input
               id="bundleIncludes"
@@ -733,6 +749,7 @@
           "baselineImagePickedHint",
         ),
         outdir: document.getElementById("outdir"),
+        schematicDpi: document.getElementById("schematicDpi"),
         bundleIncludes: document.getElementById("bundleIncludes"),
         preferFilenameOnly: document.getElementById("preferFilenameOnly"),
         openaiModel: document.getElementById("openaiModel"),
@@ -916,6 +933,8 @@
         const hasEmbeddedBaselineImage =
           !!embedded.baselineImage.base64 && !!embedded.baselineImage.mimeType;
 
+        const dpiRaw = clean(els.schematicDpi.value);
+        const dpi = dpiRaw ? Number.parseInt(dpiRaw, 10) : NaN;
         const cfg = {
           questionPath: hasEmbeddedQuestion
             ? undefined
@@ -940,6 +959,7 @@
                 }
               : undefined,
           outdir: clean(els.outdir.value),
+          schematicDpi: Number.isFinite(dpi) && dpi > 0 ? dpi : undefined,
           bundleIncludes: asBool(els.bundleIncludes.value),
           openaiModel: clean(els.openaiModel.value),
           grokModel: clean(els.grokModel.value),
@@ -1557,6 +1577,7 @@
           args.push("--baseline-image", q(cfg.baselineImagePath));
         if (cfg.bundleIncludes) args.push("--bundle-includes");
         if (cfg.outdir) args.push("--outdir", q(cfg.outdir));
+        if (cfg.schematicDpi) args.push("--schematic-dpi", q(cfg.schematicDpi));
         if (cfg.openaiModel) args.push("--openai-model", q(cfg.openaiModel));
         if (cfg.grokModel) args.push("--grok-model", q(cfg.grokModel));
         if (cfg.geminiModel) args.push("--gemini-model", q(cfg.geminiModel));
@@ -1865,6 +1886,9 @@
           }
 
           els.outdir.value = cfg.outdir || "runs";
+          els.schematicDpi.value = cfg.schematicDpi
+            ? String(cfg.schematicDpi)
+            : "";
           els.bundleIncludes.value = String(Boolean(cfg.bundleIncludes));
           els.openaiModel.value = cfg.openaiModel || "";
           els.grokModel.value = cfg.grokModel || "";
@@ -1956,6 +1980,9 @@
         }
 
         els.outdir.value = cfg.outdir || "runs";
+        els.schematicDpi.value = cfg.schematicDpi
+          ? String(cfg.schematicDpi)
+          : "";
         els.bundleIncludes.value = String(Boolean(cfg.bundleIncludes));
         els.openaiModel.value = cfg.openaiModel || "";
         els.grokModel.value = cfg.grokModel || "";

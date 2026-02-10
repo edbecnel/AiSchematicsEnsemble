@@ -320,6 +320,13 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
 
         <div class="row"><label>Outdir</label><input id="outdir" type="text" value="${args.defaultOutdir}" placeholder="runs" /></div>
         <div class="row">
+          <label>Schematic DPI</label>
+          <div>
+            <input id="schematicDpi" type="number" min="1" max="2400" value="" placeholder="(optional) e.g. 300" />
+            <div class="hint">Controls <span class="mono">schematic.png</span> resolution (Graphviz). <span class="mono">schematic.svg</span> is best for zooming.</div>
+          </div>
+        </div>
+        <div class="row">
           <label>Bundle includes</label>
           <div>
             <label><input id="bundleIncludes" type="checkbox" /> Copy <span class="mono">.include/.lib</span> deps into run folder</label>
@@ -448,6 +455,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     baselineNetlistPath: "",
     baselineImagePath: "",
     outdir: args.defaultOutdir,
+    schematicDpi: undefined,
     bundleIncludes: false,
     openaiModel: "gpt-5.2",
     grokModel: "grok-4",
@@ -475,6 +483,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     baselineNetlistPickedHint: document.getElementById('baselineNetlistPickedHint'),
     baselineImagePickedHint: document.getElementById('baselineImagePickedHint'),
     outdir: document.getElementById('outdir'),
+    schematicDpi: document.getElementById('schematicDpi'),
     bundleIncludes: document.getElementById('bundleIncludes'),
     openaiModel: document.getElementById('openaiModel'),
     grokModel: document.getElementById('grokModel'),
@@ -650,11 +659,14 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
   }
 
   function getConfig() {
+    const dpiRaw = (els.schematicDpi && els.schematicDpi.value != null) ? String(els.schematicDpi.value).trim() : '';
+    const dpi = dpiRaw ? Number.parseInt(dpiRaw, 10) : NaN;
     return {
       questionPath: els.questionPath.value.trim(),
       baselineNetlistPath: els.baselineNetlistPath.value.trim(),
       baselineImagePath: els.baselineImagePath.value.trim(),
       outdir: els.outdir.value.trim(),
+      schematicDpi: Number.isFinite(dpi) && dpi > 0 ? dpi : undefined,
       bundleIncludes: Boolean(els.bundleIncludes.checked),
       openaiModel: els.openaiModel.value.trim(),
       grokModel: els.grokModel.value.trim(),
@@ -669,6 +681,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     els.baselineNetlistPath.value = c.baselineNetlistPath || "";
     els.baselineImagePath.value = c.baselineImagePath || "";
     els.outdir.value = c.outdir || "runs";
+    if (els.schematicDpi) els.schematicDpi.value = (c.schematicDpi != null && String(c.schematicDpi).trim() !== '') ? String(c.schematicDpi) : '';
     els.bundleIncludes.checked = Boolean(c.bundleIncludes);
     els.openaiModel.value = c.openaiModel || "";
     els.grokModel.value = c.grokModel || "";
@@ -741,6 +754,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     if (cfg.baselineImagePath) args.push('--baseline-image', q(cfg.baselineImagePath));
     if (cfg.bundleIncludes) args.push('--bundle-includes');
     if (cfg.outdir) args.push('--outdir', q(cfg.outdir));
+    if (cfg.schematicDpi) args.push('--schematic-dpi', q(cfg.schematicDpi));
     if (cfg.openaiModel) args.push('--openai-model', q(cfg.openaiModel));
     if (cfg.grokModel) args.push('--grok-model', q(cfg.grokModel));
     if (cfg.geminiModel) args.push('--gemini-model', q(cfg.geminiModel));
@@ -1068,7 +1082,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
   on(els.updateCmdBtn, 'click', updateCommandPreview);
 
   // Keep preview in sync as user edits
-  for (const id of ['questionPath','baselineNetlistPath','baselineImagePath','outdir','bundleIncludes','openaiModel','grokModel','geminiModel','claudeModel','configFilename','chatProvider','chatMaxHistory','chatSave']) {
+  for (const id of ['questionPath','baselineNetlistPath','baselineImagePath','outdir','schematicDpi','bundleIncludes','openaiModel','grokModel','geminiModel','claudeModel','configFilename','chatProvider','chatMaxHistory','chatSave']) {
     const el = document.getElementById(id);
     if (!el) continue;
     el.addEventListener('input', () => updateCommandPreview());
@@ -1434,12 +1448,19 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
         const body = await readRequestBody(req);
         const payload = JSON.parse(body.toString("utf-8") || "{}");
 
+        const schematicDpiRaw = payload.schematicDpi;
+        const schematicDpi =
+          schematicDpiRaw == null || String(schematicDpiRaw).trim() === ""
+            ? undefined
+            : Number.parseInt(String(schematicDpiRaw).trim(), 10);
+
         const runOpts: RunBatchOptions = {
           questionPath: String(payload.questionPath ?? ""),
           baselineNetlistPath: payload.baselineNetlistPath ? String(payload.baselineNetlistPath) : undefined,
           baselineImagePath: payload.baselineImagePath ? String(payload.baselineImagePath) : undefined,
           bundleIncludes: Boolean(payload.bundleIncludes),
           outdir: payload.outdir ? String(payload.outdir) : defaultOutdir,
+          schematicDpi: Number.isFinite(schematicDpi) && (schematicDpi as number) > 0 ? (schematicDpi as number) : undefined,
           openaiModel: payload.openaiModel ? String(payload.openaiModel) : undefined,
           grokModel: payload.grokModel ? String(payload.grokModel) : undefined,
           geminiModel: payload.geminiModel ? String(payload.geminiModel) : undefined,

@@ -4,6 +4,7 @@
   "baselineImagePath": "",
   "bundleIncludes": false,
   "outdir": "runs",
+  "schematicDpi": 300,
   "openaiModel": "gpt-5.2",
   "grokModel": "grok-4",
   "geminiModel": "gemini-2.5-flash",

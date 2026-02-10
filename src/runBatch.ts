@@ -29,6 +29,8 @@ export type RunBatchOptions = {
   baselineImage?: InputImage;
   bundleIncludes?: boolean;
   outdir?: string;
+  /** DPI for schematic.png rendering (Graphviz). */
+  schematicDpi?: number;
   openaiModel?: string;
   grokModel?: string;
   geminiModel?: string;
@@ -396,7 +398,9 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     const pngPath = path.join(runDir, "schematic.png");
     const svgPath = path.join(runDir, "schematic.svg");
     try {
-      await execa("dot", ["-Tpng", schematicDot, "-o", pngPath]);
+      const dpi = Number.isFinite(opts.schematicDpi as number) && (opts.schematicDpi as number) > 0 ? opts.schematicDpi : undefined;
+      const dpiArg = dpi ? [`-Gdpi=${dpi}`] : [];
+      await execa("dot", [...dpiArg, "-Tpng", schematicDot, "-o", pngPath]);
       schematicPng = pngPath;
       logger.info("Rendered schematic.png via Graphviz.");
     } catch (e: any) {
