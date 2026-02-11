@@ -16,6 +16,7 @@ import { buildEnsemblePrompt, parseEnsembleOutputs } from "./ensemble.js";
 import { parseNetlist } from "./netlist/parse.js";
 import { netlistToDot } from "./netlist/graph.js";
 import { writeReportDocx } from "./report/docx.js";
+import { writeReportPdf } from "./report/pdf.js";
 import type { InputImage, ModelAnswer, ProviderName } from "./types.js";
 
 export type RunBatchOptions = {
@@ -45,6 +46,7 @@ export type RunBatchResult = {
   runDir: string;
   outputs: {
     reportDocx: string;
+    reportPdf: string;
     finalCir: string;
     finalMd: string;
     schematicDot: string;
@@ -516,12 +518,26 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     answers: answersForReport,
   });
 
+  logger.info("Writing report.pdf...");
+  const reportPdf = path.join(runDir, "report.pdf");
+  await writeReportPdf({
+    outPath: reportPdf,
+    title: "AI Schematics — Ensemble Report",
+    question,
+    finalMarkdown: finalMarkdownBest,
+    spiceNetlist: out.spiceNetlist,
+    baselineSchematicPath: baselineImageSavedPath,
+    connectivitySchematicPngPath: schematicPng,
+    answers: answersForReport,
+  });
+
   logger.info("Done.");
 
   return {
     runDir,
     outputs: {
       reportDocx,
+      reportPdf,
       finalCir,
       finalMd,
       schematicDot,

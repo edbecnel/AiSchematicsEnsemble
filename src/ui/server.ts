@@ -627,6 +627,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
           <button id="viewSchematicPngBtn" disabled>View SPICE netlist PNG image</button>
           <button id="downloadAnswersMdBtn" disabled>Download AI .md files</button>
           <button id="downloadReportBtn" disabled>Download report.docx</button>
+          <button id="downloadReportPdfBtn" disabled>Download report.pdf</button>
         </div>
         <pre id="log"></pre>
       </div>
@@ -1277,6 +1278,8 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
                     ? "image/webp"
                     : ext === ".docx"
                       ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                      : ext === ".pdf"
+                        ? "application/pdf"
                       : "application/octet-stream";
 
         res.writeHead(200, {
@@ -1324,6 +1327,8 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
                     ? "image/webp"
                     : ext === ".svg"
                       ? "image/svg+xml; charset=utf-8"
+                      : ext === ".pdf"
+                        ? "application/pdf"
                       : "application/octet-stream";
 
         res.writeHead(200, {

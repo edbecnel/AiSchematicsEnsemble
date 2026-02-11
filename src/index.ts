@@ -203,6 +203,7 @@ program
       console.log(chalk.green("Done."));
       console.log(chalk.cyan(`Outputs:`));
       console.log(`- ${result.outputs.reportDocx}`);
+      console.log(`- ${result.outputs.reportPdf}`);
       console.log(`- ${result.outputs.finalCir}`);
       console.log(`- ${result.outputs.finalMd}`);
       const schematicLine =

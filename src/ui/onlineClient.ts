@@ -420,6 +420,7 @@ async function run() {
   const viewSchematicPngBtn = byId<HTMLButtonElement>("viewSchematicPngBtn");
   const downloadAnswersMdBtn = byId<HTMLButtonElement>("downloadAnswersMdBtn");
   const downloadReportBtn = byId<HTMLButtonElement>("downloadReportBtn");
+  const downloadReportPdfBtn = byId<HTMLButtonElement>("downloadReportPdfBtn");
 
   if (runBtn) runBtn.disabled = true;
   if (openRunDirBtn) openRunDirBtn.disabled = true;
@@ -429,6 +430,7 @@ async function run() {
   if (viewSchematicPngBtn) viewSchematicPngBtn.disabled = true;
   if (downloadAnswersMdBtn) downloadAnswersMdBtn.disabled = true;
   if (downloadReportBtn) downloadReportBtn.disabled = true;
+  if (downloadReportPdfBtn) downloadReportPdfBtn.disabled = true;
 
   try {
     const cfg = getConfigFromUi();
@@ -524,6 +526,11 @@ async function run() {
     if ((data as any).outputs?.reportDocx && downloadReportBtn) {
       downloadReportBtn.disabled = false;
       downloadReportBtn.onclick = () => window.open(downloadLink(String((data as any).outputs.reportDocx)), "_blank");
+    }
+
+    if ((data as any).outputs?.reportPdf && downloadReportPdfBtn) {
+      downloadReportPdfBtn.disabled = false;
+      downloadReportPdfBtn.onclick = () => window.open(downloadLink(String((data as any).outputs.reportPdf)), "_blank");
     }
   } catch (e: any) {
     setStatus("err", String(e?.message || e));
