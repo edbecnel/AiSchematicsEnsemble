@@ -173,24 +173,34 @@
         border: 1px solid var(--btn-border);
         background: var(--btn-bg);
         color: inherit;
-        background: rgba(127, 127, 127, 0.12);
         cursor: pointer;
       }
       .btnLike {
         padding: 8px 12px;
         border: 1px solid var(--btn-border);
         background: var(--btn-bg);
-        background: rgba(127, 127, 127, 0.12);
         cursor: pointer;
         display: inline-flex;
         align-items: center;
         justify-content: center;
         user-select: none;
       }
+      button.primary {
         background: var(--primary);
         color: var(--primary-fg);
         border-color: var(--primary);
-        border-color: #2563eb;
+      }
+
+      .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        border: 1px solid var(--border);
+        border-radius: 999px;
+        font-size: 12px;
+        color: var(--muted);
+      }
 
       .themeWrap {
         display: inline-flex;
@@ -215,7 +225,6 @@
       }
       html[data-theme="dark"] .themeSelect {
         color-scheme: dark;
-      }
       }
       .mono {
         font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
@@ -256,7 +265,7 @@
             justify-content: flex-end;
           "
         >
-          <span class="themeWrap hint" title="Theme (defaults to System)">
+          <span class="themeWrap pill" title="Theme (defaults to System)">
             Theme
             <select id="themeSelect" class="themeSelect">
               <option value="system">System</option>
