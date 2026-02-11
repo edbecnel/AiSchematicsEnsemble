@@ -128,14 +128,15 @@ export async function writeReportDocx(args: {
   const baselineSection: Paragraph[] = [];
   if (args.baselineSchematicPath && (await fs.pathExists(args.baselineSchematicPath))) {
     baselineSection.push(new Paragraph({ text: "Baseline Schematic Screenshot", heading: HeadingLevel.HEADING_1 }));
-    baselineSection.push(await imageParagraph(args.baselineSchematicPath, 720, 480));
+    baselineSection.push(await imageParagraph(args.baselineSchematicPath, 720, 480, { fitMode: "auto" }));
   }
 
   const connectivitySection: Paragraph[] = [
     new Paragraph({ text: "Connectivity Schematic (Netlist-Derived)", heading: HeadingLevel.HEADING_1 }),
   ];
   if (args.connectivitySchematicPngPath && (await fs.pathExists(args.connectivitySchematicPngPath))) {
-    connectivitySection.push(await imageParagraph(args.connectivitySchematicPngPath, 720, 480));
+    // Connectivity diagrams can be very tall; ensure it fits on one page to avoid visual truncation in Word.
+    connectivitySection.push(await imageParagraph(args.connectivitySchematicPngPath, 720, 480, { fitMode: "onePage" }));
   } else {
     connectivitySection.push(
       new Paragraph("Connectivity schematic image not generated (Graphviz 'dot' not found or netlist parse failed)."),
@@ -177,7 +178,12 @@ export async function writeReportDocx(args: {
   await fs.outputFile(args.outPath, buf);
 }
 
-async function imageParagraph(pngPath: string, width: number, height: number): Promise<Paragraph> {
+async function imageParagraph(
+  pngPath: string,
+  width: number,
+  height: number,
+  opts?: { fitMode?: "auto" | "onePage" },
+): Promise<Paragraph> {
   const data = Buffer.from(await fs.readFile(pngPath));
   const imgType = imageTypeFromPath(pngPath);
   if (!imgType) {
@@ -187,6 +193,9 @@ async function imageParagraph(pngPath: string, width: number, height: number): P
   const intrinsic = imgType === "png" ? readPngSize(data) : imgType === "jpg" ? readJpegSize(data) : undefined;
   const target = intrinsic
     ? (() => {
+        const mode = opts?.fitMode ?? "auto";
+        if (mode === "onePage") return scaleToFit(intrinsic, width, height);
+
         // If the image is very tall relative to its width, fitting to page height makes it unreadable.
         // For those, fit to width only and keep aspect ratio.
         const aspect = intrinsic.height / Math.max(1, intrinsic.width);
