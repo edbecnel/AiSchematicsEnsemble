@@ -2,6 +2,7 @@ import http from "node:http";
 import path from "node:path";
 import url from "node:url";
 import crypto from "node:crypto";
+import { spawn } from "node:child_process";
 import fs from "fs-extra";
 import { execa } from "execa";
 import Busboy from "busboy";
@@ -19,6 +20,34 @@ export type UiServerOptions = {
 };
 
 type Json = Record<string, any>;
+
+async function spawnDetached(command: string, args: string[]): Promise<void> {
+  // Use detached + ignore stdio so the UI request can return immediately.
+  // This tends to be more reliable for GUI apps on Windows than awaiting a child process.
+  await new Promise<void>((resolve, reject) => {
+    const child = spawn(command, args, {
+      detached: true,
+      stdio: "ignore",
+      windowsHide: false,
+    });
+
+    let settled = false;
+    child.once("error", (err) => {
+      if (settled) return;
+      settled = true;
+      reject(err);
+    });
+
+    // If spawn succeeds, we can resolve almost immediately.
+    setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      resolve();
+    }, 50);
+
+    child.unref();
+  });
+}
 
 function sendJson(res: http.ServerResponse, status: number, data: Json): void {
   const body = JSON.stringify(data, null, 2);
@@ -306,32 +335,107 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     href="data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%2064%2064%27%3E%3Crect%20width%3D%2764%27%20height%3D%2764%27%20rx%3D%2712%27%20fill%3D%27%232563eb%27/%3E%3Cpath%20d%3D%27M32%2014l14%2036h-6l-3-8H27l-3%208h-6l14-36h6zm-3%2022h10l-5-14-5%2014z%27%20fill%3D%27white%27/%3E%3C/svg%3E"
   />
   <title>AI Schematics Ensemble</title>
+  <script>
+    (() => {
+      const THEME_KEY = "ai-schematics-theme-v1";
+      try {
+        const saved = localStorage.getItem(THEME_KEY) || "system";
+        if (saved === "dark" || saved === "light") document.documentElement.dataset.theme = saved;
+        else document.documentElement.removeAttribute("data-theme");
+      } catch {
+        // ignore
+      }
+    })();
+  </script>
   <style>
     *, *::before, *::after { box-sizing: border-box; }
-    :root { color-scheme: light dark; }
-    body { font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Arial; margin: 0; }
-    header { padding: 14px 18px; border-bottom: 1px solid rgba(127,127,127,.3); }
+    :root {
+      color-scheme: light dark;
+      --fg: #111827;
+      --muted: #6b7280;
+      --bg: #ffffff;
+      --card: #f9fafb;
+      --border: rgba(0, 0, 0, 0.18);
+      --field-border: rgba(0, 0, 0, 0.25);
+      --field-bg: rgba(127, 127, 127, 0.08);
+      --btn-bg: rgba(127, 127, 127, 0.12);
+      --btn-border: rgba(0, 0, 0, 0.25);
+      --primary: #2563eb;
+      --primary-fg: #ffffff;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --fg: #e5e7eb;
+        --muted: #9ca3af;
+        --bg: #0b1020;
+        --card: #0f172a;
+        --border: rgba(255, 255, 255, 0.18);
+        --field-border: rgba(255, 255, 255, 0.22);
+        --field-bg: rgba(127, 127, 127, 0.12);
+        --btn-bg: rgba(127, 127, 127, 0.18);
+        --btn-border: rgba(255, 255, 255, 0.22);
+        --primary: #3b82f6;
+        --primary-fg: #ffffff;
+      }
+    }
+    html[data-theme="light"] {
+      color-scheme: light;
+      --fg: #111827;
+      --muted: #6b7280;
+      --bg: #ffffff;
+      --card: #f9fafb;
+      --border: rgba(0, 0, 0, 0.18);
+      --field-border: rgba(0, 0, 0, 0.25);
+      --field-bg: rgba(127, 127, 127, 0.08);
+      --btn-bg: rgba(127, 127, 127, 0.12);
+      --btn-border: rgba(0, 0, 0, 0.25);
+      --primary: #2563eb;
+      --primary-fg: #ffffff;
+    }
+    html[data-theme="dark"] {
+      color-scheme: dark;
+      --fg: #e5e7eb;
+      --muted: #9ca3af;
+      --bg: #0b1020;
+      --card: #0f172a;
+      --border: rgba(255, 255, 255, 0.18);
+      --field-border: rgba(255, 255, 255, 0.22);
+      --field-bg: rgba(127, 127, 127, 0.12);
+      --btn-bg: rgba(127, 127, 127, 0.18);
+      --btn-border: rgba(255, 255, 255, 0.22);
+      --primary: #3b82f6;
+      --primary-fg: #ffffff;
+    }
+    body { font-family: ui-sans-serif, system-ui, Segoe UI, Roboto, Arial; margin: 0; color: var(--fg); background: var(--bg); }
+    header { padding: 14px 18px; border-bottom: 1px solid var(--border); }
     main { padding: 18px; max-width: 1100px; margin: 0 auto; }
     .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
     @media (max-width: 980px) { .grid { grid-template-columns: 1fr; } }
-    .card { border: 1px solid rgba(127,127,127,.3); border-radius: 12px; padding: 14px; }
+    .card { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--card); }
     .row { display: grid; grid-template-columns: minmax(0, 180px) minmax(0, 1fr); gap: 10px; align-items: center; margin: 10px 0; }
     .row > * { min-width: 0; }
     @media (max-width: 620px) { .row { grid-template-columns: 1fr; } }
-    input[type=text], input[type=number], input[type=password] { width: 100%; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid rgba(127,127,127,.4); background: rgba(127,127,127,.06); color: inherit; }
+    input[type=text], input[type=number], input[type=password] { width: 100%; min-width: 0; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--field-border); background: var(--field-bg); color: inherit; }
     input[type=text].subduedPath { opacity: .85; }
     input[type=text].subduedPath[readonly] { cursor: default; }
-    .hint { opacity: .75; font-size: 12px; }
+    .hint { opacity: .75; font-size: 12px; color: var(--muted); }
     .sectionTitle { font-weight: 700; margin: 16px 0 8px; }
     .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 12px; }
-    button, .btnLike { padding: 8px 12px; border-radius: 10px; border: 1px solid rgba(127,127,127,.4); background: rgba(127,127,127,.12); cursor: pointer; }
+    button, .btnLike { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--btn-border); background: var(--btn-bg); cursor: pointer; color: inherit; }
     .btnLike { display: inline-flex; align-items: center; justify-content: center; user-select: none; }
-    button.primary { background: #2563eb; color: white; border-color: #2563eb; }
-    pre { white-space: pre-wrap; word-break: break-word; padding: 10px; border-radius: 10px; border: 1px solid rgba(127,127,127,.3); background: rgba(127,127,127,.06); max-height: 320px; overflow: auto; }
+    button.primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+    pre { white-space: pre-wrap; word-break: break-word; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--field-bg); max-height: 320px; overflow: auto; }
     .ok { color: #16a34a; }
     .warn { color: #d97706; }
     .err { color: #dc2626; }
     .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+
+    .pill { display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px; border: 1px solid var(--border); border-radius: 999px; font-size: 12px; color: var(--muted); }
+    .themeWrap { display: inline-flex; align-items: center; gap: 6px; }
+    .themeSelect { padding: 6px 10px; border-radius: 10px; border: 1px solid var(--btn-border); background: var(--bg); color: var(--fg); }
+    .themeSelect option { background: var(--bg); color: var(--fg); }
+    html[data-theme="light"] .themeSelect { color-scheme: light; }
+    html[data-theme="dark"] .themeSelect { color-scheme: dark; }
   </style>
 </head>
 <body>
@@ -342,6 +446,14 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
         <div class="hint">Server CWD: <span class="mono" id="cwd"></span></div>
       </div>
       <div style="display:flex; gap:12px; align-items:baseline; flex-wrap:wrap; justify-content:flex-end;">
+        <span class="themeWrap pill" title="Theme (defaults to System)">
+          Theme
+          <select id="themeSelect" class="themeSelect">
+            <option value="system">System</option>
+            <option value="dark">Dark</option>
+            <option value="light">Light</option>
+          </select>
+        </span>
         <a class="hint" href="/online-help.html" target="_blank" rel="noopener">Help</a>
         <a class="hint" href="/" target="_blank" rel="noopener">Offline config</a>
         <span class="hint">Batch runs only (for now)</span>
@@ -544,6 +656,44 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
   </div>
 
   <script id="uiInit" type="application/json">${safeJson({ cwd: args.cwd, defaults })}</script>
+  <script>
+    (() => {
+      const THEME_KEY = "ai-schematics-theme-v1";
+      const apply = (c) => {
+        if (c === "dark" || c === "light") document.documentElement.dataset.theme = c;
+        else document.documentElement.removeAttribute("data-theme");
+      };
+      const getSaved = () => {
+        try {
+          return localStorage.getItem(THEME_KEY) || "system";
+        } catch {
+          return "system";
+        }
+      };
+      const save = (c) => {
+        try {
+          if (c === "dark" || c === "light") localStorage.setItem(THEME_KEY, c);
+          else localStorage.removeItem(THEME_KEY);
+        } catch {
+          // ignore
+        }
+      };
+
+      const saved = getSaved();
+      apply(saved);
+
+      window.addEventListener("DOMContentLoaded", () => {
+        const sel = document.getElementById("themeSelect");
+        if (!sel) return;
+        sel.value = saved === "dark" || saved === "light" ? saved : "system";
+        sel.addEventListener("change", () => {
+          const v = sel.value;
+          apply(v);
+          save(v);
+        });
+      });
+    })();
+  </script>
   <script type="module" src="/assets/onlineClient.js"></script>
 </body>
 </html>`;
@@ -1030,23 +1180,64 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           return;
         }
 
+        const exists = await fs.pathExists(abs);
+        if (!exists) {
+          sendJson(res, 404, { error: "Path does not exist", path: abs });
+          return;
+        }
+
+        let isDir = false;
         try {
+          const st = await fs.stat(abs);
+          isDir = st.isDirectory();
+        } catch {
+          // ignore; handled below
+        }
+
+        if (!isDir) {
+          sendJson(res, 400, { error: "Path is not a directory", path: abs });
+          return;
+        }
+
+        try {
+          const attempts: Array<{ cmd: string; args: string[] }> = [];
           if (process.platform === "win32") {
-            try {
-              await execa("explorer.exe", [abs]);
-            } catch {
-              // Fallback that tends to work even when explorer.exe isn't on PATH
-              // or when process launch behavior is finicky.
-              await execa("cmd", ["/c", "start", "", abs]);
+            // Try a few strategies; return which one we used.
+            attempts.push({ cmd: "explorer.exe", args: [abs] });
+            attempts.push({ cmd: "cmd.exe", args: ["/c", "start", "", abs] });
+
+            let opened: { cmd: string; args: string[] } | undefined;
+            let lastErr: any;
+            for (const a of attempts) {
+              try {
+                if (a.cmd.toLowerCase() === "explorer.exe") {
+                  await spawnDetached(a.cmd, a.args);
+                } else {
+                  await spawnDetached(a.cmd, a.args);
+                }
+                opened = a;
+                break;
+              } catch (e: any) {
+                lastErr = e;
+              }
             }
+
+            if (!opened) {
+              throw lastErr ?? new Error("Failed to launch Explorer");
+            }
+
+            sendJson(res, 200, { ok: true, path: abs, openedWith: opened.cmd, openedArgs: opened.args });
+            return;
           } else if (process.platform === "darwin") {
+            attempts.push({ cmd: "open", args: [abs] });
             await execa("open", [abs]);
           } else {
+            attempts.push({ cmd: "xdg-open", args: [abs] });
             await execa("xdg-open", [abs]);
           }
-          sendJson(res, 200, { ok: true });
+          sendJson(res, 200, { ok: true, path: abs });
         } catch (e: any) {
-          sendJson(res, 500, { error: String(e?.message ?? e) });
+          sendJson(res, 500, { error: String(e?.message ?? e), path: abs });
         }
         return;
       }

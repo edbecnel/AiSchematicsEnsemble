@@ -388,10 +388,12 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     );
   }
 
+  const finalMarkdownBest = out.finalMarkdown.trim()
+    ? out.finalMarkdown
+    : "# Ensemble output\n\n(Ensemble did not provide <final_markdown>; see ensemble_raw.txt.)\n";
+
   const finalMdText =
-    (out.finalMarkdown.trim()
-      ? out.finalMarkdown
-      : "# Ensemble output\n\n(Ensemble did not provide <final_markdown>; see ensemble_raw.txt.)\n") +
+    finalMarkdownBest +
     (missingSpice
       ? "\n> WARNING: Missing SPICE netlist block; see ensemble_raw.txt.\n"
       : "");
@@ -497,14 +499,21 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
   // Word report
   logger.info("Writing report.docx...");
   const reportDocx = path.join(runDir, "report.docx");
+
+  const answersForReport = answers.map((a) => {
+    const body = a.error ? `# ERROR\n\n${a.error}` : (a.text || "(No output)");
+    return { heading: `${a.provider} | ${a.model}`, markdown: body };
+  });
+
   await writeReportDocx({
     outPath: reportDocx,
     title: "AI Schematics — Ensemble Report",
     question,
-    finalMarkdown: out.finalMarkdown,
+    finalMarkdown: finalMarkdownBest,
     spiceNetlist: out.spiceNetlist,
     baselineSchematicPath: baselineImageSavedPath,
     connectivitySchematicPngPath: schematicPng,
+    answers: answersForReport,
   });
 
   logger.info("Done.");

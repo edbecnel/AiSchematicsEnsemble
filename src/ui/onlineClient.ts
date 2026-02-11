@@ -464,7 +464,14 @@ async function run() {
           const payload = await r.json().catch(() => ({} as any));
           if (!r.ok) throw new Error(String((payload as any)?.error || ("HTTP " + r.status)));
 
-          setStatus("ok", "Opened run folder (on server machine).");
+          const openedWith = String((payload as any)?.openedWith || "").trim();
+          const openedArgs = Array.isArray((payload as any)?.openedArgs) ? (payload as any).openedArgs : undefined;
+          if (openedWith) {
+            setStatus("ok", `Opened run folder (on server machine) via ${openedWith}.`);
+            if (openedArgs?.length) logLine(`open: ${openedWith} ${openedArgs.join(" ")}`);
+          } else {
+            setStatus("ok", "Opened run folder (on server machine).");
+          }
         } catch (e: any) {
           setStatus("err", "Open run folder failed: " + String(e?.message || e));
           logLine(String(e?.stack || e));

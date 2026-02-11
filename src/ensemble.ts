@@ -74,6 +74,19 @@ function extractBetween(text: string, open: string, close: string): string | und
   return text.substring(i + open.length, j).trim();
 }
 
+function removeBetween(text: string, open: string, close: string): string {
+  const i = text.indexOf(open);
+  const j = text.indexOf(close);
+  if (i === -1 || j === -1 || j <= i) return text;
+  return (text.substring(0, i) + text.substring(j + close.length)).trim();
+}
+
+function removeOnce(text: string, needle: string): string {
+  const i = text.indexOf(needle);
+  if (i === -1) return text;
+  return (text.substring(0, i) + text.substring(i + needle.length)).trim();
+}
+
 function extractFirstFencedCodeBlock(text: string, langs: string[]): string | undefined {
   // Very small and permissive code-fence extractor; intentionally avoids a full Markdown parser.
   // Matches: ```lang\n...\n```
@@ -114,8 +127,6 @@ function extractLikelyJson(text: string): string | undefined {
 }
 
 export function parseEnsembleOutputs(text: string): EnsembleOutputs {
-  const finalMarkdown = extractBetween(text, TAG_MD_OPEN, TAG_MD_CLOSE) ?? "";
-
   let spiceNetlist = extractBetween(text, TAG_SPICE_OPEN, TAG_SPICE_CLOSE) ?? "";
   if (!spiceNetlist.trim()) {
     const fenced =
@@ -127,6 +138,29 @@ export function parseEnsembleOutputs(text: string): EnsembleOutputs {
   let circuitJson = extractBetween(text, TAG_JSON_OPEN, TAG_JSON_CLOSE) ?? "";
   if (!circuitJson.trim()) {
     circuitJson = extractLikelyJson(text) ?? "";
+  }
+
+  let finalMarkdown = extractBetween(text, TAG_MD_OPEN, TAG_MD_CLOSE) ?? "";
+  if (!finalMarkdown.trim()) {
+    // Best-effort fallback: if the model ignored the tag format but produced Markdown, use it.
+    // Strip any tagged SPICE/JSON blocks if present.
+    let candidate = String(text || "").trim();
+
+    candidate = removeOnce(candidate, TAG_MD_OPEN);
+    candidate = removeOnce(candidate, TAG_MD_CLOSE);
+
+    candidate = removeBetween(candidate, TAG_SPICE_OPEN, TAG_SPICE_CLOSE);
+    candidate = removeBetween(candidate, TAG_JSON_OPEN, TAG_JSON_CLOSE);
+
+    // If we successfully extracted SPICE/JSON by other means, try to remove them from the Markdown view.
+    if (spiceNetlist.trim() && candidate.includes(spiceNetlist.trim())) {
+      candidate = candidate.replace(spiceNetlist.trim(), "").trim();
+    }
+    if (circuitJson.trim() && candidate.includes(circuitJson.trim())) {
+      candidate = candidate.replace(circuitJson.trim(), "").trim();
+    }
+
+    finalMarkdown = candidate;
   }
 
   return { finalMarkdown, spiceNetlist, circuitJson };
