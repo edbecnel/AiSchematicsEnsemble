@@ -462,14 +462,17 @@ Then run the saved JSON config with:
 
 ```powershell
 npm run build
-node dist/index.js run --config ai-schematics.config.json
+node dist/index.js run --config ai-offline-schematics.config.json
 ```
+
+(If you used the offline helper page, the default export filename is
+`ai-offline-schematics.config.json`.)
 
 Notes:
 
-- The CLI does not auto-create `ai-schematics.config.json`. It is created when you download/export a config JSON from the UI/offline helper page (or when you make one yourself).
+- The CLI does not auto-create a config file. It is created when you download/export a config JSON from the UI pages (online exports `ai-online-schematics.config.json`, offline exports `ai-offline-schematics.config.json`) or when you make one yourself.
 - You can place the config JSON anywhere. `--config` can be a full path or a relative path from where you run the command.
-- If you set “Config filename” to a relative path like `config\ai-schematics.config.json`, ensure the file ends up at that path (browsers download to your Downloads folder, so you may need to move it into `config/`).
+- If you set “Config filename” to a relative path like `config\ai-offline-schematics.config.json`, ensure the file ends up at that path (browsers download to your Downloads folder, so you may need to move it into `config/`).
 - When you use the “…” file pickers without the UI server (e.g. `file://` or GitHub Pages), the browser cannot provide a real path. By default, offline.html embeds the picked file contents into the JSON config. If you enable “Prefer filename only (don’t embed)”, it will instead just put the filename into the textbox (make sure the CLI can read that file by that path when you run the command).
 
 ## How to test: offline (no server) vs UI (server)

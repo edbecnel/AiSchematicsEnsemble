@@ -424,6 +424,8 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     button, .btnLike { padding: 8px 12px; border-radius: 10px; border: 1px solid var(--btn-border); background: var(--btn-bg); cursor: pointer; color: inherit; }
     .btnLike { display: inline-flex; align-items: center; justify-content: center; user-select: none; }
     button.primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+    button:disabled { opacity: .45; cursor: not-allowed; }
+    button:disabled { pointer-events: none; }
     pre { white-space: pre-wrap; word-break: break-word; padding: 10px; border-radius: 10px; border: 1px solid var(--border); background: var(--field-bg); max-height: 320px; overflow: auto; }
     .ok { color: #16a34a; }
     .warn { color: #d97706; }
@@ -1001,6 +1003,32 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           sendJson(res, 200, { ok: true, path: toUserPath(filePath), filename: safe, mimeType: contentType || "application/octet-stream", kind });
         } catch (e: any) {
           sendJson(res, 400, { error: String(e?.message ?? e) });
+        }
+        return;
+      }
+
+      if (method === "POST" && pathname === "/api/exists") {
+        try {
+          const body = await readRequestBody(req);
+          const payload = JSON.parse(body.toString("utf-8") || "{}");
+          const pathsRaw: unknown = payload?.paths;
+          const paths: string[] = Array.isArray(pathsRaw)
+            ? pathsRaw.map((p: any) => String(p || "").trim()).filter((p: string) => p)
+            : [];
+
+          const limited = paths.slice(0, 200);
+          const results = await Promise.all(
+            limited.map(async (p) => {
+              const abs = path.resolve(cwd, p);
+              const allowed = isWithin(abs, cwd);
+              const exists = allowed ? await fs.pathExists(abs) : false;
+              return { path: p, allowed, exists };
+            }),
+          );
+
+          sendJson(res, 200, { ok: true, results });
+        } catch (e: any) {
+          sendJson(res, 500, { error: String(e?.message ?? e) });
         }
         return;
       }

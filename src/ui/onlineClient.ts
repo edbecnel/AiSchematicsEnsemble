@@ -4,6 +4,7 @@ type UiDefaults = {
   questionPath?: string;
   baselineNetlistPath?: string;
   baselineImagePath?: string;
+  includeUploads?: Array<{ name: string; path: string }>;
   outdir?: string;
   schematicDpi?: number;
   bundleIncludes?: boolean;
@@ -220,6 +221,7 @@ function getConfigFromUi() {
     questionPath: getEffectivePath("questionPath"),
     baselineNetlistPath: getEffectivePath("baselineNetlistPath"),
     baselineImagePath: getEffectivePath("baselineImagePath"),
+    includeUploads: includeUploads.map((x) => ({ name: String(x?.name || ""), path: String(x?.path || "") })).filter((x) => x.name || x.path),
     outdir: String(byId<HTMLInputElement>("outdir")?.value ?? "").trim(),
     schematicDpi: Number.isFinite(dpi) && dpi > 0 ? dpi : undefined,
     bundleIncludes,
@@ -274,7 +276,14 @@ function updateCommandPreview() {
 
   // Upload snapshot warning (online page uploads are snapshots)
   try {
-    const paths = [String(cfg.questionPath || ""), String(cfg.baselineNetlistPath || ""), String(cfg.baselineImagePath || "")].filter(Boolean);
+    const paths = [
+      String(cfg.questionPath || ""),
+      String(cfg.baselineNetlistPath || ""),
+      String(cfg.baselineImagePath || ""),
+      ...((Array.isArray((cfg as any).includeUploads) ? (cfg as any).includeUploads : [])
+        .map((x: any) => String(x?.path || ""))
+        .filter(Boolean)),
+    ].filter(Boolean);
     const hasUploads = paths.some((p) => {
       const s = String(p).split("\\").join("/").toLowerCase();
       return s.includes("/.ui_uploads/") || s.startsWith(".ui_uploads/");
@@ -288,6 +297,72 @@ function updateCommandPreview() {
 }
 
 let includeUploads: Array<{ name: string; path: string }> = [];
+
+function isUploadSnapshotPath(p: unknown): boolean {
+  const s = String(p || "").split("\\").join("/").toLowerCase();
+  return s.includes("/.ui_uploads/") || s.startsWith(".ui_uploads/");
+}
+
+async function checkPathsExist(paths: string[]): Promise<{ missing: string[]; notAllowed: string[] }> {
+  try {
+    const unique = Array.from(new Set(paths.map((p) => String(p || "").trim()).filter(Boolean)));
+    if (!unique.length) return { missing: [], notAllowed: [] };
+
+    const resp = await fetch("/api/exists", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ paths: unique }),
+    });
+    const data = await resp.json().catch(() => ({} as any));
+    if (!resp.ok) return { missing: [], notAllowed: [] };
+
+    const results: any[] = Array.isArray((data as any)?.results) ? (data as any).results : [];
+    const missing: string[] = [];
+    const notAllowed: string[] = [];
+    for (const r of results) {
+      const p = String(r?.path || "");
+      const allowed = Boolean(r?.allowed);
+      const exists = Boolean(r?.exists);
+      if (!p) continue;
+      if (!allowed) notAllowed.push(p);
+      else if (!exists) missing.push(p);
+    }
+    return { missing, notAllowed };
+  } catch {
+    return { missing: [], notAllowed: [] };
+  }
+}
+
+async function warnConfigInputs(cfg: any, sourceLabel: string): Promise<void> {
+  const paths: string[] = [];
+  for (const p of [cfg?.questionPath, cfg?.baselineNetlistPath, cfg?.baselineImagePath]) {
+    const s = String(p || "").trim();
+    if (s) paths.push(s);
+  }
+  const inc = Array.isArray(cfg?.includeUploads) ? cfg.includeUploads : [];
+  for (const it of inc) {
+    const p = String(it?.path || "").trim();
+    if (p) paths.push(p);
+  }
+
+  const snapshot = paths.filter((p) => isUploadSnapshotPath(p));
+  const { missing, notAllowed } = await checkPathsExist(paths);
+
+  if (missing.length || notAllowed.length) {
+    const bits: string[] = [];
+    if (missing.length) bits.push("missing: " + missing.map(basenameAny).join(", "));
+    if (notAllowed.length) bits.push("not allowed: " + notAllowed.map(basenameAny).join(", "));
+    setStatus("warn", `${sourceLabel} Some referenced files are not available on the server (${bits.join("; ")}). Re-upload inputs or fix paths.`);
+    return;
+  }
+
+  if (snapshot.length) {
+    setStatus("warn", `${sourceLabel} Note: paths under .ui_uploads are uploaded snapshots. Re-upload after edits, and configs may not be portable across machines.`);
+    return;
+  }
+
+  setStatus("ok", sourceLabel.trim().endsWith(".") ? sourceLabel : sourceLabel + ".");
+}
 
 function renderIncludeUploads() {
   const names = includeUploads.map((x) => String(x?.name || "")).filter(Boolean);
@@ -378,6 +453,16 @@ function setConfig(cfg: UiDefaults) {
   setPathBox("baselineNetlistPath", basenameAny(bnPath), bnPath || undefined);
   setPathBox("baselineImagePath", basenameAny(biPath), biPath || undefined);
 
+  // Includes are uploaded separately; import/export can remember them, but file inputs cannot be auto-populated.
+  if (Array.isArray((cfg as any).includeUploads)) {
+    includeUploads = (cfg as any).includeUploads
+      .map((x: any) => ({ name: String(x?.name || ""), path: String(x?.path || "") }))
+      .filter((x: any) => x.name || x.path);
+  } else {
+    includeUploads = [];
+  }
+  renderIncludeUploads();
+
   const outdir = byId<HTMLInputElement>("outdir");
   if (outdir) outdir.value = String(cfg.outdir || "runs");
 
@@ -406,6 +491,50 @@ function setConfig(cfg: UiDefaults) {
   if (grokModel) grokModel.value = String(cfg.grokModel || "");
   if (geminiModel) geminiModel.value = String(cfg.geminiModel || "");
   if (claudeModel) claudeModel.value = String(cfg.claudeModel || "");
+}
+
+function resetStatusActionsUi() {
+  const openRunDirBtn = byId<HTMLButtonElement>("openRunDirBtn");
+  const downloadFinalMdBtn = byId<HTMLButtonElement>("downloadFinalMdBtn");
+  const downloadFinalCirBtn = byId<HTMLButtonElement>("downloadFinalCirBtn");
+  const downloadSchematicPngBtn = byId<HTMLButtonElement>("downloadSchematicPngBtn");
+  const viewSchematicPngBtn = byId<HTMLButtonElement>("viewSchematicPngBtn");
+  const downloadAnswersMdBtn = byId<HTMLButtonElement>("downloadAnswersMdBtn");
+  const downloadReportBtn = byId<HTMLButtonElement>("downloadReportBtn");
+  const downloadReportPdfBtn = byId<HTMLButtonElement>("downloadReportPdfBtn");
+
+  if (openRunDirBtn) {
+    openRunDirBtn.disabled = true;
+    openRunDirBtn.onclick = null;
+  }
+  if (downloadFinalMdBtn) {
+    downloadFinalMdBtn.disabled = true;
+    downloadFinalMdBtn.onclick = null;
+  }
+  if (downloadFinalCirBtn) {
+    downloadFinalCirBtn.disabled = true;
+    downloadFinalCirBtn.onclick = null;
+  }
+  if (downloadSchematicPngBtn) {
+    downloadSchematicPngBtn.disabled = true;
+    downloadSchematicPngBtn.onclick = null;
+  }
+  if (viewSchematicPngBtn) {
+    viewSchematicPngBtn.disabled = true;
+    viewSchematicPngBtn.onclick = null;
+  }
+  if (downloadAnswersMdBtn) {
+    downloadAnswersMdBtn.disabled = true;
+    downloadAnswersMdBtn.onclick = null;
+  }
+  if (downloadReportBtn) {
+    downloadReportBtn.disabled = true;
+    downloadReportBtn.onclick = null;
+  }
+  if (downloadReportPdfBtn) {
+    downloadReportPdfBtn.disabled = true;
+    downloadReportPdfBtn.onclick = null;
+  }
 }
 
 async function run() {
@@ -609,28 +738,39 @@ function wireEvents(defaults: UiDefaults) {
   });
 
   on("loadConfigBtn", "click", () => {
-    try {
+    (async () => {
+      try {
       const raw = localStorage.getItem("ai-schematics-ensemble-ui-config") || "";
       if (!raw) {
         setStatus("warn", "No saved config found.");
         return;
       }
-      setConfig(JSON.parse(raw));
-      setStatus("ok", "Loaded saved config.");
+
+      const parsed = JSON.parse(raw);
+      setConfig(parsed);
+      await warnConfigInputs(parsed, "Loaded saved config.");
       updateCommandPreview();
-    } catch (e: any) {
+      } catch (e: any) {
       setStatus("err", "Load failed: " + String(e?.message || e));
-    }
+      }
+    })().catch(() => undefined);
   });
 
   on("exportConfigBtn", "click", () => {
-    const blob = new Blob([JSON.stringify(getConfigFromUi(), null, 2)], { type: "application/json" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "ai-schematics.config.json";
-    a.click();
-    URL.revokeObjectURL(a.href);
-    updateCommandPreview();
+    try {
+      const blob = new Blob([JSON.stringify(getConfigFromUi(), null, 2) + "\n"], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "ai-online-schematics.config.json";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 50);
+      updateCommandPreview();
+      setStatus("ok", "Exported config JSON.");
+    } catch (e: any) {
+      setStatus("err", "Export failed: " + String(e?.message || e));
+    }
   });
 
   on("clearSavedBtn", "click", () => {
@@ -649,8 +789,9 @@ function wireEvents(defaults: UiDefaults) {
       if (!f) return;
       try {
         const text = await f.text();
-        setConfig(JSON.parse(text));
-        setStatus("ok", "Imported config JSON.");
+        const parsed = JSON.parse(text);
+        setConfig(parsed);
+        await warnConfigInputs(parsed, "Imported config JSON.");
         updateCommandPreview();
       } catch (err: any) {
         setStatus("err", "Import failed: " + String(err?.message || err));
@@ -681,6 +822,7 @@ function wireEvents(defaults: UiDefaults) {
 
   // Init
   setConfig(defaults);
+  resetStatusActionsUi();
   updateCommandPreview();
   setStatus("hint", "Ready.");
   logLine("[ui] Client JS initialized.");
@@ -703,6 +845,17 @@ function liveReload() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
+  // If the browser restores this page from the back/forward cache (bfcache),
+  // it can preserve the previous DOM state (including enabled status buttons).
+  // Reset action buttons to avoid confusing "stale run" UI.
+  window.addEventListener("pageshow", () => {
+    try {
+      resetStatusActionsUi();
+    } catch {
+      // ignore
+    }
+  });
+
   liveReload();
 
   const initEl = byId<HTMLScriptElement>("uiInit");

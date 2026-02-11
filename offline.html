@@ -566,7 +566,7 @@
             ><input
               id="configFilename"
               type="text"
-              value="ai-schematics.config.json"
+              value="ai-offline-schematics.config.json"
             />
           </div>
           <div class="hint" style="margin: 8px 0">Two options:</div>
@@ -1742,7 +1742,8 @@
         }
 
         const configFile =
-          clean(els.configFilename.value) || "ai-schematics.config.json";
+          clean(els.configFilename.value) ||
+          "ai-offline-schematics.config.json";
 
         const basePs = ["node", "dist/index.js", "run", "--no-prompts"];
         const baseCmd = ["node", "dist\\index.js", "run", "--no-prompts"];
@@ -1856,7 +1857,8 @@
       function downloadJson() {
         const cfg = getConfig();
         const fname =
-          clean(els.configFilename.value) || "ai-schematics.config.json";
+          clean(els.configFilename.value) ||
+          "ai-offline-schematics.config.json";
         // Browsers won't download into subfolders via the download attribute.
         // If the user enters a relative path (e.g. config\file.json), download just the basename.
         const downloadName =

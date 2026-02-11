@@ -223,8 +223,35 @@
           </li>
           <li>
             <strong>Inputs are upload-only snapshots</strong>: choosing a file
-            uploads it to <code>.ui_uploads/current/</code>. If you edit the
-            original file later, re-upload.
+            uploads it to <code>.ui_uploads/current/</code> on the machine
+            running the server. If you edit the original file later, re-upload.
+            <div class="note">
+              <strong>Important:</strong> the server saves uploads using
+              <em>stable filenames</em> under <code>.ui_uploads/current/</code>
+              (not the original name/path). For example:
+              <ul>
+                <li>
+                  Question file becomes
+                  <code>.ui_uploads/current/question.&lt;ext&gt;</code>
+                  (e.g. uploading <code>my_questions.md</code> becomes
+                  <code>question.md</code>)
+                </li>
+                <li>
+                  Baseline netlist becomes
+                  <code>.ui_uploads/current/baseline_netlist.&lt;ext&gt;</code>
+                  (e.g. uploading <code>my.cir</code> becomes
+                  <code>baseline_netlist.cir</code>)
+                </li>
+                <li>
+                  Baseline image becomes
+                  <code>.ui_uploads/current/baseline_image.&lt;ext&gt;</code>
+                  (e.g. uploading <code>photo.png</code> becomes
+                  <code>baseline_image.png</code>)
+                </li>
+              </ul>
+              These <code>.ui_uploads</code> paths are what the online UI writes
+              into the exported config JSON.
+            </div>
           </li>
           <li>
             If you want copy/paste CLI commands, use the offline helper page
@@ -312,6 +339,20 @@
           </li>
         </ul>
         <div class="note">
+          <strong>Server-side filenames:</strong> the uploaded question,
+          baseline netlist, and baseline image are renamed to stable filenames
+          under <code>.ui_uploads/current/</code>:
+          <code>question.&lt;ext&gt;</code>,
+          <code>baseline_netlist.&lt;ext&gt;</code>,
+          <code>baseline_image.&lt;ext&gt;</code>. <br /><br />
+          Baseline include files are stored under
+          <code>.ui_uploads/current/</code> using their (sanitized) original
+          filenames. <br /><br />
+          <strong>This matters for configs:</strong> when you export a config
+          from the online UI, it contains these <code>.ui_uploads/current</code>
+          paths (not your original filenames/paths).
+        </div>
+        <div class="note">
           If you see a warning about <code>.ui_uploads</code>, it means the run
           is using uploaded snapshots.
         </div>
@@ -348,7 +389,7 @@
           </li>
           <li>
             <span class="kbd">Export config</span> downloads an
-            <code>ai-schematics.config.json</code> file.
+            <code>ai-online-schematics.config.json</code> file.
           </li>
           <li>
             <span class="kbd">Import</span> loads a previously exported config
