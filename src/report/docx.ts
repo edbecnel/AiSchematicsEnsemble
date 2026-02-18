@@ -171,7 +171,11 @@ export async function writeReportDocx(args: {
           new Paragraph({ text: "Question", heading: HeadingLevel.HEADING_1 }),
           new Paragraph(args.question),
           new Paragraph({ text: "Ensembled Output (Markdown)", heading: HeadingLevel.HEADING_1 }),
-          ...args.finalMarkdown.split(/\r?\n/).map((line) => new Paragraph(line)),
+          ...markdownToDocxParagraphs(args.finalMarkdown, {
+            // Keep the report structure stable; demote any headings inside the markdown.
+            headingDemotion: 1,
+            maxHeadingLevel: 6,
+          }),
           ...answersSection,
           new Paragraph({ text: "SPICE Netlist", heading: HeadingLevel.HEADING_1 }),
           ...args.spiceNetlist.split(/\r?\n/).map((line) => codeParagraph(line)),
