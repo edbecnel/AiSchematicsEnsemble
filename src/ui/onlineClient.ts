@@ -223,7 +223,7 @@ function getConfigFromUi() {
     baselineImagePath: getEffectivePath("baselineImagePath"),
     includeUploads: includeUploads.map((x) => ({ name: String(x?.name || ""), path: String(x?.path || "") })).filter((x) => x.name || x.path),
     outdir: String(byId<HTMLInputElement>("outdir")?.value ?? "").trim(),
-    schematicDpi: Number.isFinite(dpi) && dpi > 0 ? dpi : undefined,
+    schematicDpi: Number.isFinite(dpi) && dpi > 0 ? dpi : 600,
     bundleIncludes,
     openaiModel: String(byId<HTMLInputElement>("openaiModel")?.value ?? "").trim(),
     grokModel: String(byId<HTMLInputElement>("grokModel")?.value ?? "").trim(),
@@ -244,7 +244,7 @@ function buildArgs(cfg: any, q: (v: unknown) => string) {
   if (cfg.baselineImagePath) args.push("--baseline-image", q(cfg.baselineImagePath));
   if (cfg.bundleIncludes) args.push("--bundle-includes");
   if (cfg.outdir) args.push("--outdir", q(cfg.outdir));
-  if (cfg.schematicDpi) args.push("--schematic-dpi", q(cfg.schematicDpi));
+  args.push("--schematic-dpi", q(cfg.schematicDpi || 600));
 
   if (enabled.includes("openai") && cfg.openaiModel) args.push("--openai-model", q(cfg.openaiModel));
   if (enabled.includes("xai") && cfg.grokModel) args.push("--grok-model", q(cfg.grokModel));
@@ -467,7 +467,7 @@ function setConfig(cfg: UiDefaults) {
   if (outdir) outdir.value = String(cfg.outdir || "runs");
 
   const dpi = byId<HTMLInputElement>("schematicDpi");
-  if (dpi) dpi.value = cfg.schematicDpi != null && String(cfg.schematicDpi).trim() !== "" ? String(cfg.schematicDpi) : "";
+  if (dpi) dpi.value = cfg.schematicDpi != null && String(cfg.schematicDpi).trim() !== "" ? String(cfg.schematicDpi) : "600";
 
   const bundle = byId<HTMLSelectElement>("bundleIncludes");
   if (bundle) bundle.value = String(Boolean(cfg.bundleIncludes));

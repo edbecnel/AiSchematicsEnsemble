@@ -158,8 +158,19 @@ function extFromMimeType(mimeType: string | undefined): string {
 
 const ALL_PROVIDERS: ProviderName[] = ["openai", "xai", "google", "anthropic"];
 
+function providersWithApiKeysFromEnv(): ProviderName[] {
+  const out: ProviderName[] = [];
+  if (process.env.OPENAI_API_KEY) out.push("openai");
+  if (process.env.XAI_API_KEY) out.push("xai");
+  if (process.env.GEMINI_API_KEY) out.push("google");
+  if (process.env.ANTHROPIC_API_KEY) out.push("anthropic");
+  return out;
+}
+
 function normalizeEnabledProviders(enabled?: ProviderName[]): ProviderName[] {
-  if (!enabled) return ALL_PROVIDERS.slice();
+  // If the caller did not explicitly choose providers, default to those that have keys.
+  // This avoids noisy warnings (and failed calls) for providers the user isn't using.
+  if (enabled === undefined) return providersWithApiKeysFromEnv();
   const set = new Set<ProviderName>();
   for (const p of enabled) {
     if (p === "openai" || p === "xai" || p === "google" || p === "anthropic") set.add(p);
@@ -204,7 +215,11 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
 
   const enabledProviders = normalizeEnabledProviders(opts.enabledProviders);
   if (!enabledProviders.length) {
-    throw new Error("No providers enabled. Select at least one provider.");
+    throw new Error(
+      opts.enabledProviders === undefined
+        ? "No providers enabled (no API keys detected). Set OPENAI_API_KEY/XAI_API_KEY/GEMINI_API_KEY/ANTHROPIC_API_KEY, or explicitly set enabledProviders in the config/UI."
+        : "No providers enabled. Select at least one provider.",
+    );
   }
 
   const question = opts.questionText?.trim()
@@ -469,9 +484,9 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     const pngPath = path.join(runDir, "schematic.png");
     const svgPath = path.join(runDir, "schematic.svg");
     try {
-      const dpi = Number.isFinite(opts.schematicDpi as number) && (opts.schematicDpi as number) > 0 ? opts.schematicDpi : undefined;
-      const dpiArg = dpi ? [`-Gdpi=${dpi}`] : [];
-      await execa("dot", [...dpiArg, "-Tpng", schematicDot, "-o", pngPath]);
+      const dpiCandidate = opts.schematicDpi as number;
+      const dpi = Number.isFinite(dpiCandidate) && dpiCandidate > 0 ? dpiCandidate : 600;
+      await execa("dot", [`-Gdpi=${dpi}`, "-Tpng", schematicDot, "-o", pngPath]);
       schematicPng = pngPath;
       logger.info("Rendered schematic.png via Graphviz.");
     } catch (e: any) {

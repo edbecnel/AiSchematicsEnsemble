@@ -75,6 +75,7 @@ export async function readRunConfig(configPath: string): Promise<RunConfig> {
     baselineImage,
     bundleIncludes: cfg.bundleIncludes,
     outdir: cleanString(cfg.outdir),
+    schematicDpi: typeof cfg.schematicDpi === "number" && Number.isFinite(cfg.schematicDpi) ? cfg.schematicDpi : undefined,
     openaiModel: cleanString(cfg.openaiModel),
     grokModel: cleanString(cfg.grokModel),
     geminiModel: cleanString(cfg.geminiModel),

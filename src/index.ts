@@ -156,7 +156,7 @@ program
   .option("--baseline-netlist <path>", "Optional SPICE netlist representing current baseline circuit")
   .option("--baseline-image <path>", "Optional schematic screenshot image (png/jpg/webp)")
   .option("--no-prompts", "Disable interactive prompts for missing baseline netlist/image")
-  .option("--schematic-dpi <n>", "DPI for schematic.png (Graphviz). Example: 300")
+  .option("--schematic-dpi <n>", "DPI for schematic.png (Graphviz). Example: 600")
   .option(
     "--bundle-includes",
     "Copy .include/.lib files referenced by baseline netlist into the run folder and rewrite baseline.cir to point at them",

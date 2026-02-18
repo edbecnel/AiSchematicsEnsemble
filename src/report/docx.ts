@@ -1,5 +1,6 @@
 import fs from "fs-extra";
 import { Document, Packer, Paragraph, HeadingLevel, TextRun, ImageRun } from "docx";
+import { markdownToDocxParagraphs } from "./markdownDocx.js";
 
 type DocxImageType = "png" | "jpg" | "gif" | "bmp";
 
@@ -151,7 +152,13 @@ export async function writeReportDocx(args: {
       const heading = (a.heading || "Model").trim();
       const body = (a.markdown || "(No output)").trim();
       answersSection.push(new Paragraph({ text: heading, heading: HeadingLevel.HEADING_2 }));
-      answersSection.push(...body.split(/\r?\n/).map((line) => new Paragraph(line)));
+      answersSection.push(
+        ...markdownToDocxParagraphs(body, {
+          // Answers often contain their own headings; demote them so the report structure stays consistent.
+          headingDemotion: 2,
+          maxHeadingLevel: 6,
+        }),
+      );
     }
   }
 

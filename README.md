@@ -25,13 +25,13 @@ CLI install/setup guide (HTML, GitHub Pages-friendly): **cli-help.html**.
 - For a higher-res PNG, rerun Graphviz with a higher DPI:
 
 ```powershell
-dot -Gdpi=300 -Tpng runs\<run_id>\schematic.dot -o runs\<run_id>\schematic_300dpi.png
+dot -Gdpi=600 -Tpng runs\<run_id>\schematic.dot -o runs\<run_id>\schematic_600dpi.png
 ```
 
 Or set it at run time:
 
 ```powershell
-node dist/index.js run --question question.md --schematic-dpi 300
+node dist/index.js run --question question.md --schematic-dpi 600
 ```
 
 If you instead have a schematic PDF (e.g., from KiCad “Print to PDF”) and want a high-res PNG to use as `--baseline-image`, you can convert it with Poppler’s `pdftoppm`:

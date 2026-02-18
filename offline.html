@@ -362,6 +362,53 @@
             </div>
           </div>
           <div class="row">
+            <label>Baseline includes</label>
+            <div>
+              <div style="display: flex; gap: 8px; align-items: center">
+                <input
+                  id="includeSummary"
+                  type="text"
+                  value=""
+                  placeholder="(optional)"
+                  readonly
+                  class="subduedPath"
+                />
+                <label
+                  class="btnLike"
+                  for="includeFiles"
+                  title="Browse .include/.lib files"
+                  >...</label
+                >
+                <button
+                  type="button"
+                  id="includeClearBtn"
+                  title="Clear"
+                  style="padding: 8px 10px"
+                >
+                  ✕
+                </button>
+                <input
+                  id="includeFiles"
+                  type="file"
+                  multiple
+                  accept=".lib,.cir,.sp,.txt,text/plain"
+                  style="
+                    position: absolute;
+                    left: -10000px;
+                    width: 1px;
+                    height: 1px;
+                    opacity: 0;
+                  "
+                />
+              </div>
+              <div class="hint">
+                Upload one or more <span class="mono">.include/.lib</span> deps
+                so a baseline netlist can reference them by relative path.
+              </div>
+              <div class="hint" id="includeFilesList"></div>
+            </div>
+          </div>
+          <div class="row">
             <label>Baseline image</label>
             <div>
               <div style="display: flex; gap: 8px; align-items: center">
@@ -408,7 +455,7 @@
                 id="schematicDpi"
                 type="text"
                 value=""
-                placeholder="(optional) e.g. 300"
+                placeholder="(optional) e.g. 600"
               />
               <div class="hint">
                 Controls <span class="mono">schematic.png</span> resolution
@@ -774,18 +821,22 @@
         questionPath: document.getElementById("questionPath"),
         baselineNetlistPath: document.getElementById("baselineNetlistPath"),
         baselineImagePath: document.getElementById("baselineImagePath"),
+        includeSummary: document.getElementById("includeSummary"),
         questionFile: document.getElementById("questionFile"),
         baselineNetlistFile: document.getElementById("baselineNetlistFile"),
+        includeFiles: document.getElementById("includeFiles"),
         baselineImageFile: document.getElementById("baselineImageFile"),
         questionClearBtn: document.getElementById("questionClearBtn"),
         baselineNetlistClearBtn: document.getElementById(
           "baselineNetlistClearBtn",
         ),
+        includeClearBtn: document.getElementById("includeClearBtn"),
         baselineImageClearBtn: document.getElementById("baselineImageClearBtn"),
         questionPickedHint: document.getElementById("questionPickedHint"),
         baselineNetlistPickedHint: document.getElementById(
           "baselineNetlistPickedHint",
         ),
+        includeFilesList: document.getElementById("includeFilesList"),
         baselineImagePickedHint: document.getElementById(
           "baselineImagePickedHint",
         ),
@@ -904,6 +955,22 @@
         baselineImage: { base64: "", mimeType: "", filename: "" },
       };
 
+      let includeUploads = [];
+
+      function renderIncludeUploads() {
+        const names = includeUploads
+          .map((x) => String((x && x.name) || "").trim())
+          .filter(Boolean);
+        if (els.includeSummary) {
+          els.includeSummary.value = names.length ? names.join(", ") : "";
+        }
+        if (els.includeFilesList) {
+          els.includeFilesList.textContent = names.length
+            ? names.map((n) => `- ${n}`).join("\n")
+            : "";
+        }
+      }
+
       function loadPreferFilenameOnly() {
         if (!els.preferFilenameOnly) return false;
         try {
@@ -940,6 +1007,12 @@
           embedded.baselineImage.mimeType = "";
           embedded.baselineImage.filename = "";
         }
+      }
+
+      function clearIncludeUploads() {
+        includeUploads = [];
+        if (els.includeFiles) els.includeFiles.value = "";
+        renderIncludeUploads();
       }
 
       function arrayBufferToBase64(ab) {
@@ -979,7 +1052,9 @@
           !!embedded.baselineImage.base64 && !!embedded.baselineImage.mimeType;
 
         const dpiRaw = clean(els.schematicDpi.value);
-        const dpi = dpiRaw ? Number.parseInt(dpiRaw, 10) : NaN;
+        const dpiParsed = dpiRaw ? Number.parseInt(dpiRaw, 10) : NaN;
+        const dpi =
+          Number.isFinite(dpiParsed) && dpiParsed > 0 ? dpiParsed : 600;
 
         const enabledProviders = [];
         if (els.useOpenai && els.useOpenai.checked)
@@ -1013,8 +1088,16 @@
                   filename: embedded.baselineImage.filename || undefined,
                 }
               : undefined,
+          includeUploads: Array.isArray(includeUploads)
+            ? includeUploads
+                .map((x) => ({
+                  name: String((x && x.name) || ""),
+                  path: String((x && x.path) || ""),
+                }))
+                .filter((x) => x.name || x.path)
+            : [],
           outdir: clean(els.outdir.value),
-          schematicDpi: Number.isFinite(dpi) && dpi > 0 ? dpi : undefined,
+          schematicDpi: dpi,
           bundleIncludes: asBool(els.bundleIncludes.value),
           openaiModel: clean(els.openaiModel.value),
           grokModel: clean(els.grokModel.value),
@@ -1077,6 +1160,37 @@
             reject(e);
           }
         });
+      }
+
+      function uploadIncludes(files) {
+        if (!files || !files.length) return;
+        if (!IS_SERVER) {
+          setStatus(
+            "warn",
+            "Cannot upload include files in offline (file://) mode. Run the local UI server and open offline.html from http://127.0.0.1:3210/.",
+          );
+          return;
+        }
+
+        const list = Array.from(files).slice(0, 200);
+        Promise.all(list.map((f) => uploadToServer(f, "include")))
+          .then((saved) => {
+            const uploaded = saved
+              .map((s) => ({
+                name: String((s && (s.filename || s.originalFilename)) || ""),
+                path: String((s && s.path) || ""),
+              }))
+              .filter((x) => x.name || x.path);
+            includeUploads = uploaded;
+            renderIncludeUploads();
+            updatePreview();
+          })
+          .catch((e) => {
+            setStatus(
+              "err",
+              "Include upload failed: " + String(e?.message || e),
+            );
+          });
       }
 
       async function uploadToServerRaw(file, kind) {
@@ -1650,7 +1764,7 @@
           args.push("--baseline-image", q(cfg.baselineImagePath));
         if (cfg.bundleIncludes) args.push("--bundle-includes");
         if (cfg.outdir) args.push("--outdir", q(cfg.outdir));
-        if (cfg.schematicDpi) args.push("--schematic-dpi", q(cfg.schematicDpi));
+        args.push("--schematic-dpi", q(cfg.schematicDpi || 600));
         if (enabled.includes("openai") && cfg.openaiModel)
           args.push("--openai-model", q(cfg.openaiModel));
         if (enabled.includes("xai") && cfg.grokModel)
@@ -2011,10 +2125,20 @@
             els.baselineImagePath.value = cfg.baselineImagePath || "";
           }
 
+          includeUploads = Array.isArray(cfg.includeUploads)
+            ? cfg.includeUploads
+                .map((x) => ({
+                  name: String((x && x.name) || ""),
+                  path: String((x && x.path) || ""),
+                }))
+                .filter((x) => x.name || x.path)
+            : [];
+          renderIncludeUploads();
+
           els.outdir.value = cfg.outdir || "runs";
           els.schematicDpi.value = cfg.schematicDpi
             ? String(cfg.schematicDpi)
-            : "";
+            : "600";
           els.bundleIncludes.value = String(Boolean(cfg.bundleIncludes));
           els.openaiModel.value = cfg.openaiModel || "";
           els.grokModel.value = cfg.grokModel || "";
@@ -2119,10 +2243,20 @@
           els.baselineImagePath.value = cfg.baselineImagePath || "";
         }
 
+        includeUploads = Array.isArray(cfg.includeUploads)
+          ? cfg.includeUploads
+              .map((x) => ({
+                name: String((x && x.name) || ""),
+                path: String((x && x.path) || ""),
+              }))
+              .filter((x) => x.name || x.path)
+          : [];
+        renderIncludeUploads();
+
         els.outdir.value = cfg.outdir || "runs";
         els.schematicDpi.value = cfg.schematicDpi
           ? String(cfg.schematicDpi)
-          : "";
+          : "600";
         els.bundleIncludes.value = String(Boolean(cfg.bundleIncludes));
         els.openaiModel.value = cfg.openaiModel || "";
         els.grokModel.value = cfg.grokModel || "";
@@ -2138,6 +2272,18 @@
       }
 
       els.updateBtn.addEventListener("click", updatePreview);
+
+      if (els.includeFiles) {
+        els.includeFiles.addEventListener("change", () => {
+          uploadIncludes(els.includeFiles.files);
+        });
+      }
+      if (els.includeClearBtn) {
+        els.includeClearBtn.addEventListener("click", () => {
+          clearIncludeUploads();
+          updatePreview();
+        });
+      }
       if (els.configFilename) {
         els.configFilename.addEventListener("input", updatePreview);
         els.configFilename.addEventListener("change", updatePreview);

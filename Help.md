@@ -357,13 +357,13 @@ If you specifically want a higher-resolution PNG, you have two options:
 1. Set DPI in the CLI:
 
 ```powershell
-node dist/index.js run --question question.md --schematic-dpi 300
+node dist/index.js run --question question.md --schematic-dpi 600
 ```
 
 2. Or re-render a run’s existing `schematic.dot` with Graphviz:
 
 ```powershell
-dot -Gdpi=300 -Tpng runs\<run_id>\schematic.dot -o runs\<run_id>\schematic_300dpi.png
+dot -Gdpi=600 -Tpng runs\<run_id>\schematic.dot -o runs\<run_id>\schematic_600dpi.png
 ```
 
 Config JSON: you can also set `schematicDpi` (number).

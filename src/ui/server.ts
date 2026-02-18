@@ -316,7 +316,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     baselineNetlistPath: "",
     baselineImagePath: "",
     outdir: args.defaultOutdir,
-    schematicDpi: 300,
+    schematicDpi: 600,
     bundleIncludes: false,
     openaiModel: "gpt-5.2",
     grokModel: "grok-4",
@@ -547,7 +547,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
         <div class="row">
           <label>Schematic DPI</label>
           <div>
-            <input id="schematicDpi" type="number" min="1" max="2400" value="" placeholder="(optional) e.g. 300" />
+            <input id="schematicDpi" type="number" min="1" max="2400" value="" placeholder="(optional) e.g. 600" />
             <div class="hint">Controls <span class="mono">schematic.png</span> resolution (Graphviz).</div>
           </div>
         </div>
@@ -1110,7 +1110,7 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
         const schematicDpiRaw = payload.schematicDpi;
         const schematicDpi =
           schematicDpiRaw == null || String(schematicDpiRaw).trim() === ""
-            ? undefined
+            ? 600
             : Number.parseInt(String(schematicDpiRaw).trim(), 10);
 
         const runOpts: RunBatchOptions = {
@@ -1119,7 +1119,7 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           baselineImagePath: payload.baselineImagePath ? String(payload.baselineImagePath) : undefined,
           bundleIncludes: Boolean(payload.bundleIncludes),
           outdir: payload.outdir ? String(payload.outdir) : defaultOutdir,
-          schematicDpi: Number.isFinite(schematicDpi) && (schematicDpi as number) > 0 ? (schematicDpi as number) : undefined,
+          schematicDpi: Number.isFinite(schematicDpi) && (schematicDpi as number) > 0 ? (schematicDpi as number) : 600,
           openaiModel: payload.openaiModel ? String(payload.openaiModel) : undefined,
           grokModel: payload.grokModel ? String(payload.grokModel) : undefined,
           geminiModel: payload.geminiModel ? String(payload.geminiModel) : undefined,
@@ -1143,6 +1143,67 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           warn: (m) => logs.push("WARN: " + m),
           error: (m) => logs.push("ERROR: " + m),
         };
+
+        // If the baseline netlist was uploaded into .ui_uploads, relative .include/.lib deps often break
+        // unless you also upload those include files (or enable bundling).
+        try {
+          if (!runOpts.bundleIncludes && runOpts.baselineNetlistPath) {
+            const baselineAbs = path.resolve(cwd, runOpts.baselineNetlistPath);
+            const isUploadedSnapshot = isWithin(baselineAbs, uploadRootDir);
+            if (isUploadedSnapshot && (await fs.pathExists(baselineAbs))) {
+              const netlistText = await fs.readFile(baselineAbs, "utf8");
+              const baseDir = path.dirname(baselineAbs);
+
+              const missing: Array<{ directive: "include" | "lib"; spec: string; resolvedAttemptPath: string }> = [];
+              const seen = new Set<string>();
+              for (const line of String(netlistText).split(/\r?\n/g)) {
+                const trimmed = line.trim();
+                if (!trimmed) continue;
+                if (/^\s*[\*;]/.test(trimmed)) continue;
+                const m = trimmed.match(/^\.(include|lib)\s+(.+?)\s*$/i);
+                if (!m) continue;
+                const directive = m[1].toLowerCase() as "include" | "lib";
+                const rest = String(m[2] || "").trim();
+                if (!rest) continue;
+
+                // First token is the filename (quoted or unquoted). For .lib we ignore section tokens.
+                let fileToken = "";
+                if (rest.startsWith('"')) {
+                  const j = rest.indexOf('"', 1);
+                  if (j > 0) fileToken = rest.slice(1, j);
+                } else if (rest.startsWith("'")) {
+                  const j = rest.indexOf("'", 1);
+                  if (j > 0) fileToken = rest.slice(1, j);
+                } else {
+                  fileToken = rest.split(/\s+/g)[0] || "";
+                }
+
+                const spec = fileToken.trim();
+                if (!spec) continue;
+                const key = directive + ":" + spec;
+                if (seen.has(key)) continue;
+                seen.add(key);
+
+                const resolvedAttemptPath = path.isAbsolute(spec) ? spec : path.resolve(baseDir, spec);
+                const ok = await fs.pathExists(resolvedAttemptPath);
+                if (!ok) missing.push({ directive, spec, resolvedAttemptPath });
+              }
+
+              if (missing.length) {
+                logger.warn(
+                  `Baseline netlist was uploaded under .ui_uploads and references ${missing.length} missing .include/.lib file(s). ` +
+                    `Upload those deps in “Baseline includes” or enable “Bundle includes”.`,
+                );
+                for (const item of missing.slice(0, 10)) {
+                  logger.warn(`Missing .${item.directive}: ${item.spec} (looked for: ${item.resolvedAttemptPath})`);
+                }
+                if (missing.length > 10) logger.warn(`(showing first 10 of ${missing.length})`);
+              }
+            }
+          }
+        } catch {
+          // ignore warning generation failures
+        }
 
         // Online page can optionally supply API keys (stored in browser localStorage).
         // Apply them to this process for the duration of the run, then restore.
