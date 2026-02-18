@@ -151,6 +151,12 @@ npm run build
 npm run ui
 ```
 
+If you do NOT want the server to auto-open a browser, use:
+
+```powershell
+npm run ui -- --no-open
+```
+
 Or run directly in TS (no build):
 
 ```powershell
@@ -195,6 +201,12 @@ node dist/index.js run --config ai-schematics.config.example.json --outdir runs_
 ```powershell
 npm run build
 npm run ui
+```
+
+(Optional) Don’t auto-open a browser:
+
+```powershell
+npm run ui -- --no-open
 ```
 
 ## Chat (interactive)

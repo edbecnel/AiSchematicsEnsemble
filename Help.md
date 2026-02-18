@@ -104,6 +104,8 @@ PowerShell:
 ```powershell
 npm run build
 npm run ui
+# Or, if you do NOT want the server to auto-open a browser:
+npm run ui -- --no-open
 ```
 
 Dev/watch mode (auto rebuild + auto restart while you edit code):
@@ -117,11 +119,14 @@ Command Prompt (cmd):
 ```bat
 npm run build
 npm run ui
+REM Or, if you do NOT want the server to auto-open a browser:
+npm run ui -- --no-open
 ```
 
 Notes:
 
 - The UI is local-only and runs on your machine.
+- By default, the UI server attempts to auto-open your browser. Use `npm run ui -- --no-open` to disable that.
 - If you edit TypeScript/HTML in `src/`, you must rebuild/restart the UI (or use `npm run ui:watch`).
 - File paths you type into the UI are resolved by the server process, relative to the server’s current working directory.
 - The UI can download `final.md`, `final.cir`, and `report.docx`, and can open the run folder in Explorer.
