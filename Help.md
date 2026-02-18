@@ -248,6 +248,38 @@ You can provide either or both:
 
 If you omit either one **and you’re running interactively**, the CLI will prompt you to add them.
 
+#### Converting a KiCad schematic PDF to a PNG baseline image
+
+If you printed your schematic to PDF from KiCad, you can convert the PDF to a high-res PNG using Poppler’s `pdftoppm`:
+
+```powershell
+# Produces .\schematic.png (600 DPI)
+& "pdftoppm.exe" -png -r 600 -singlefile "Babcock-patent-SIM-2028-02-04.pdf" ".\schematic"
+```
+
+Notes:
+
+- With `-singlefile`, Poppler writes `schematic.png`. Without it, you’ll typically get `schematic-1.png`, `schematic-2.png`, etc.
+- Make sure `pdftoppm.exe` is installed and available (either on your PATH or referenced by full path).
+- Then pass the result into the tool with `--baseline-image schematic.png`.
+
+##### Reference: install `pdftoppm.exe` on Windows (no CLI)
+
+`pdftoppm.exe` is part of **Poppler**.
+
+Direct download (ZIP of Windows binaries):
+
+1. Open: https://github.com/oschwartz10612/poppler-windows/releases
+2. Download the latest release ZIP (it contains Poppler’s Windows binaries).
+3. Extract the ZIP somewhere permanent (for example `C:\Tools\poppler\`).
+4. Find `pdftoppm.exe` under: `...\Library\bin\pdftoppm.exe`
+
+Two easy ways to use it:
+
+- Easiest (no PATH changes): copy `pdftoppm.exe` into the same folder as your PDF, then run the example command using `& ".\pdftoppm.exe" ...`.
+- More convenient (one-time setup): add `...\Library\bin` to your **PATH** using the Windows UI:
+  - Settings → System → About → Advanced system settings → Environment Variables → select **Path** → Edit → New → paste the `...\Library\bin` folder → OK.
+
 ### Optional: bundle `.include` / `.lib` dependencies
 
 If your baseline netlist references other files (e.g. `.include some.lib` or `.lib models.lib`), you can ask the tool to copy those dependency files into the run folder:

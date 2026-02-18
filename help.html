@@ -462,17 +462,14 @@ Then run the saved JSON config with:
 
 ```powershell
 npm run build
-node dist/index.js run --config ai-offline-schematics.config.json
+node dist/index.js run --config ai-schematics.config.json
 ```
-
-(If you used the offline helper page, the default export filename is
-`ai-offline-schematics.config.json`.)
 
 Notes:
 
-- The CLI does not auto-create a config file. It is created when you download/export a config JSON from the UI pages (online exports `ai-online-schematics.config.json`, offline exports `ai-offline-schematics.config.json`) or when you make one yourself.
+- The CLI does not auto-create `ai-schematics.config.json`. It is created when you download/export a config JSON from the UI/offline helper page (or when you make one yourself).
 - You can place the config JSON anywhere. `--config` can be a full path or a relative path from where you run the command.
-- If you set “Config filename” to a relative path like `config\ai-offline-schematics.config.json`, ensure the file ends up at that path (browsers download to your Downloads folder, so you may need to move it into `config/`).
+- If you set “Config filename” to a relative path like `config\ai-schematics.config.json`, ensure the file ends up at that path (browsers download to your Downloads folder, so you may need to move it into `config/`).
 - When you use the “…” file pickers without the UI server (e.g. `file://` or GitHub Pages), the browser cannot provide a real path. By default, offline.html embeds the picked file contents into the JSON config. If you enable “Prefer filename only (don’t embed)”, it will instead just put the filename into the textbox (make sure the CLI can read that file by that path when you run the command).
 
 ## How to test: offline (no server) vs UI (server)
@@ -568,6 +565,38 @@ You can provide either or both:
 - `--baseline-image <path>`: a schematic screenshot/photo (`.png/.jpg/.jpeg/.webp`)
 
 If you omit either one **and you’re running interactively**, the CLI will prompt you to add them.
+
+#### Converting a KiCad schematic PDF to a PNG baseline image
+
+If you printed your schematic to PDF from KiCad, you can convert the PDF to a high-res PNG using Poppler’s `pdftoppm`:
+
+```powershell
+# Produces .\schematic.png (600 DPI)
+& "pdftoppm.exe" -png -r 600 -singlefile "Babcock-patent-SIM-2028-02-04.pdf" ".\schematic"
+```
+
+Notes:
+
+- With `-singlefile`, Poppler writes `schematic.png`. Without it, you’ll typically get `schematic-1.png`, `schematic-2.png`, etc.
+- Make sure `pdftoppm.exe` is installed and available (either on your PATH or referenced by full path).
+- Then pass the result into the tool with `--baseline-image schematic.png`.
+
+##### Reference: install `pdftoppm.exe` on Windows (no CLI)
+
+`pdftoppm.exe` is part of **Poppler**.
+
+Direct download (ZIP of Windows binaries):
+
+1. Open: https://github.com/oschwartz10612/poppler-windows/releases
+2. Download the latest release ZIP (it contains Poppler’s Windows binaries).
+3. Extract the ZIP somewhere permanent (for example `C:\Tools\poppler\`).
+4. Find `pdftoppm.exe` under: `...\Library\bin\pdftoppm.exe`
+
+Two easy ways to use it:
+
+- Easiest (no PATH changes): copy `pdftoppm.exe` into the same folder as your PDF, then run the example command using `& ".\pdftoppm.exe" ...`.
+- More convenient (one-time setup): add `...\Library\bin` to your **PATH** using the Windows UI:
+  - Settings → System → About → Advanced system settings → Environment Variables → select **Path** → Edit → New → paste the `...\Library\bin` folder → OK.
 
 ### Optional: bundle `.include` / `.lib` dependencies
 
@@ -919,7 +948,7 @@ Use batch mode and commit your `question.md` (and optional `baseline.cir`) along
           }
 
           // headings
-          const h = line.match(/^(#{1,3})\s+(.*)$/);
+          const h = line.match(/^(#{1,6})\s+(.*)$/);
           if (h) {
             flushPara();
             closeLists();

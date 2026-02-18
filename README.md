@@ -34,6 +34,12 @@ Or set it at run time:
 node dist/index.js run --question question.md --schematic-dpi 300
 ```
 
+If you instead have a schematic PDF (e.g., from KiCad “Print to PDF”) and want a high-res PNG to use as `--baseline-image`, you can convert it with Poppler’s `pdftoppm`:
+
+```powershell
+& "pdftoppm.exe" -png -r 600 -singlefile "schematic.pdf" ".\schematic"
+```
+
 ## Prereqs
 
 - Node.js 18+ recommended
