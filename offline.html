@@ -1823,6 +1823,32 @@
           [...baseChatCmd, ...chatArgsCmd].join(" ");
       }
 
+      // Auto-update previews on any form change (debounced) so the user doesn't
+      // need to click "Update preview" while typing.
+      let previewTimer = null;
+      const AUTO_PREVIEW_IGNORED_IDS = new Set([
+        "cmdJson",
+        "cmdExplicit",
+        "cmdChat",
+      ]);
+
+      function schedulePreviewUpdate() {
+        if (previewTimer) clearTimeout(previewTimer);
+        previewTimer = setTimeout(() => {
+          previewTimer = null;
+          updatePreview();
+        }, 250);
+      }
+
+      function isRelevantPreviewControl(el) {
+        if (!el || el.nodeType !== 1) return false;
+        if (!el.matches || !el.matches("input, select, textarea")) return false;
+        if (el.id && AUTO_PREVIEW_IGNORED_IDS.has(el.id)) return false;
+        // Ignore disabled controls.
+        if (el.disabled) return false;
+        return true;
+      }
+
       async function copyText(text) {
         try {
           await navigator.clipboard.writeText(text);
@@ -2116,6 +2142,22 @@
         els.configFilename.addEventListener("input", updatePreview);
         els.configFilename.addEventListener("change", updatePreview);
       }
+
+      // Global auto-preview wiring (covers inputs + model fields + checkboxes + selects).
+      // We keep the manual button for reassurance/edge cases.
+      document.addEventListener("input", (e) => {
+        const el = e.target;
+        if (!isRelevantPreviewControl(el)) return;
+        // "input" fires on every keystroke; debounce.
+        schedulePreviewUpdate();
+      });
+      document.addEventListener("change", (e) => {
+        const el = e.target;
+        if (!isRelevantPreviewControl(el)) return;
+        // "change" fires for selects/checkboxes/file picks.
+        schedulePreviewUpdate();
+      });
+
       els.saveLocalBtn.addEventListener("click", saveLocal);
       els.loadLocalBtn.addEventListener("click", loadLocal);
       els.clearLocalBtn.addEventListener("click", clearLocal);
