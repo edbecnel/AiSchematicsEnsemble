@@ -488,6 +488,25 @@
             </div>
           </div>
 
+          <div class="row">
+            <label for="baseInputDir">Base input folder</label>
+            <div>
+              <input
+                id="baseInputDir"
+                type="text"
+                value=""
+                placeholder="(optional) e.g. inputs\\run02 or inputs/run02"
+              />
+              <div class="hint">
+                Optional helper for GitHub Pages / file:// mode. When you pick a
+                file and it uses filename-only (not embedded), the textbox will
+                use <span class="mono">&lt;base&gt;/&lt;filename&gt;</span>.
+                Relative or absolute paths are OK. Best if all inputs live in
+                the same folder.
+              </div>
+            </div>
+          </div>
+
           <div
             style="
               display: flex;
@@ -816,6 +835,7 @@
       const KEYS_KEY = "ai-schematics-offline-keys-v1";
       const PREF_FILENAME_ONLY_KEY =
         "ai-schematics-offline-prefer-filename-only-v1";
+      const BASE_INPUT_DIR_KEY = "ai-schematics-offline-base-input-dir-v1";
 
       const els = {
         questionPath: document.getElementById("questionPath"),
@@ -844,6 +864,7 @@
         schematicDpi: document.getElementById("schematicDpi"),
         bundleIncludes: document.getElementById("bundleIncludes"),
         preferFilenameOnly: document.getElementById("preferFilenameOnly"),
+        baseInputDir: document.getElementById("baseInputDir"),
         useOpenai: document.getElementById("useOpenai"),
         useXai: document.getElementById("useXai"),
         useGemini: document.getElementById("useGemini"),
@@ -993,6 +1014,54 @@
         } catch {
           // ignore
         }
+      }
+
+      function loadBaseInputDir() {
+        if (!els.baseInputDir) return "";
+        try {
+          const v = localStorage.getItem(BASE_INPUT_DIR_KEY);
+          const s = clean(v);
+          els.baseInputDir.value = s;
+          return s;
+        } catch {
+          els.baseInputDir.value = "";
+          return "";
+        }
+      }
+
+      function saveBaseInputDir(s) {
+        if (!els.baseInputDir) return;
+        const v = clean(s);
+        try {
+          if (v) localStorage.setItem(BASE_INPUT_DIR_KEY, v);
+          else localStorage.removeItem(BASE_INPUT_DIR_KEY);
+        } catch {
+          // ignore
+        }
+      }
+
+      function getBaseInputDir() {
+        return clean(els.baseInputDir && els.baseInputDir.value);
+      }
+
+      function joinBaseDirAndName(baseDir, fileName) {
+        const base = clean(baseDir);
+        const name = clean(fileName);
+        if (!base) return name;
+        if (!name) return base;
+        // If the browser ever provides something absolute-ish, don't join.
+        if (
+          /^[a-zA-Z]:[\\/]/.test(name) ||
+          name.startsWith("\\\\") ||
+          name.startsWith("/") ||
+          name.startsWith("\\")
+        ) {
+          return name;
+        }
+        const baseTrimmed = base.replace(/[\\/]+$/g, "");
+        const nameTrimmed = name.replace(/^[\\/]+/g, "");
+        const sep = base.lastIndexOf("\\") > base.lastIndexOf("/") ? "\\" : "/";
+        return baseTrimmed + sep + nameTrimmed;
       }
 
       function clearEmbedded(kind) {
@@ -1362,13 +1431,18 @@
           }
         }
 
+        const baseDir = getBaseInputDir();
+        const joinedName = joinBaseDirAndName(baseDir, f.name);
+
         // Hosted/static mode: browsers won't give us a usable full local path.
         // Instead, embed the file contents into the JSON config so the CLI can run from that config.
         try {
           // If a file with the same name is reachable next to this page (e.g. opened as file://
           // and the input sits beside offline.html, or hosted on GitHub Pages), prefer using
           // just the filename instead of embedding bytes into the JSON config.
-          if (await sameDirFileSeemsReachableByName(f.name)) {
+          // If the user provided a base folder, skip this heuristic (we can't reliably probe
+          // local CLI paths from the browser).
+          if (!baseDir && (await sameDirFileSeemsReachableByName(f.name))) {
             clearEmbedded(kind);
             setPathBoxMode(pathEl, "path");
             pathEl.value = f.name;
@@ -1388,7 +1462,7 @@
           if (els.preferFilenameOnly && els.preferFilenameOnly.checked) {
             clearEmbedded(kind);
             setPathBoxMode(pathEl, "path");
-            pathEl.value = f.name;
+            pathEl.value = joinedName || f.name;
             setPickedHint(
               hintEl,
               "Picked: " + f.name + " (filename only — not embedded)",
@@ -1437,7 +1511,7 @@
         } catch (e) {
           // Fallback: filename only
           setPathBoxMode(pathEl, "path");
-          pathEl.value = f.name;
+          pathEl.value = joinedName || f.name;
           setPickedHint(
             hintEl,
             "Picked: " + f.name + " (paste real path if needed)",
@@ -2457,6 +2531,13 @@
       if (els.preferFilenameOnly) {
         els.preferFilenameOnly.addEventListener("change", () => {
           savePreferFilenameOnly(els.preferFilenameOnly.checked);
+        });
+      }
+
+      loadBaseInputDir();
+      if (els.baseInputDir) {
+        els.baseInputDir.addEventListener("input", () => {
+          saveBaseInputDir(els.baseInputDir.value);
         });
       }
 

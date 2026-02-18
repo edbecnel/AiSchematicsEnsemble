@@ -12,6 +12,8 @@
       name="description"
       content="Help for using offline.html on GitHub Pages or locally."
     />
+    This only works if the CLI can read those paths when you run the command
+    locally.
     <style>
       :root {
         color-scheme: light dark;
@@ -376,9 +378,11 @@
                   </li>
                   <li>
                     Or enable <strong>Prefer filename only</strong> (don’t
-                    embed) if your files are hosted alongside
-                    <code>offline.html</code> (or you know the CLI will be able
-                    to read them by the resulting relative path).
+                    embed). If you keep all inputs under one folder, set
+                    <strong>Base input folder</strong> (e.g.
+                    <code>inputs/</code>) so picks become
+                    <code>inputs/question.md</code>,
+                    <code>inputs/baseline.cir</code>, etc.
                   </li>
                 </ul>
               </td>
@@ -516,6 +520,19 @@
               <td>
                 This can make the explicit-params command available, but it only
                 works if the file will exist at that path when you run the CLI.
+              </td>
+            </tr>
+            <tr>
+              <td><strong>Base input folder</strong></td>
+              <td>
+                Optional helper for GitHub Pages / <code>file://</code> mode.
+                When a picked file uses filename-only (not embedded), the
+                textbox becomes <code>&lt;base&gt;/&lt;filename&gt;</code>.
+              </td>
+              <td>
+                Can be a relative path (e.g. <code>inputs/run02</code>) or an
+                absolute path (e.g. <code>D:\\work\\inputs</code>). Best when
+                you keep question/netlist/image in the same folder.
               </td>
             </tr>
             <tr>
