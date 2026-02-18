@@ -17,6 +17,7 @@ import { parseNetlist } from "./netlist/parse.js";
 import { netlistToDot } from "./netlist/graph.js";
 import { writeReportDocx } from "./report/docx.js";
 import { writeReportPdf } from "./report/pdf.js";
+import { convertDocxToPdfViaLibreOffice } from "./report/docxToPdf.js";
 import type { InputImage, ModelAnswer, ProviderName } from "./types.js";
 
 export type RunBatchOptions = {
@@ -533,18 +534,25 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     answers: answersForReport,
   });
 
-  logger.info("Writing report.pdf...");
   const reportPdf = path.join(runDir, "report.pdf");
-  await writeReportPdf({
-    outPath: reportPdf,
-    title: "AI Schematics — Ensemble Report",
-    question,
-    finalMarkdown: finalMarkdownBest,
-    spiceNetlist: out.spiceNetlist,
-    baselineSchematicPath: baselineImageSavedPath,
-    connectivitySchematicPngPath: schematicPng,
-    answers: answersForReport,
-  });
+  logger.info("Writing report.pdf...");
+
+  const converted = await convertDocxToPdfViaLibreOffice({ docxPath: reportDocx, pdfOutPath: reportPdf });
+  if (converted.ok) {
+    logger.info(`Rendered report.pdf from report.docx via ${converted.method}.`);
+  } else {
+    logger.warn(`DOCX→PDF conversion not available (${converted.reason}); falling back to built-in PDF renderer.`);
+    await writeReportPdf({
+      outPath: reportPdf,
+      title: "AI Schematics — Ensemble Report",
+      question,
+      finalMarkdown: finalMarkdownBest,
+      spiceNetlist: out.spiceNetlist,
+      baselineSchematicPath: baselineImageSavedPath,
+      connectivitySchematicPngPath: schematicPng,
+      answers: answersForReport,
+    });
+  }
 
   logger.info("Done.");
 
