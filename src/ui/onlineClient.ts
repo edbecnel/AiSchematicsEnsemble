@@ -37,6 +37,73 @@ function setStatus(kind: "ok" | "warn" | "err" | "hint", msg: string) {
   status.textContent = msg;
 }
 
+let toastHideTimer: any = null;
+let toastRemoveTimer: any = null;
+let toastHostEl: HTMLDivElement | null = null;
+let toastEl: HTMLDivElement | null = null;
+
+function ensureToastHost(): HTMLDivElement | null {
+  try {
+    if (toastHostEl && toastHostEl.isConnected) return toastHostEl;
+    const host = document.createElement("div");
+    host.id = "toastHost";
+    host.style.position = "fixed";
+    host.style.right = "16px";
+    host.style.bottom = "16px";
+    host.style.zIndex = "9999";
+    host.style.pointerEvents = "none";
+    document.body.appendChild(host);
+    toastHostEl = host;
+    return host;
+  } catch {
+    return null;
+  }
+}
+
+function showToast(kind: "ok" | "warn" | "err" | "hint", msg: string) {
+  const host = ensureToastHost();
+  if (!host) return;
+  if (toastHideTimer) clearTimeout(toastHideTimer);
+  if (toastRemoveTimer) clearTimeout(toastRemoveTimer);
+
+  if (!toastEl) {
+    toastEl = document.createElement("div");
+    host.appendChild(toastEl);
+  }
+
+  const k = kind === "err" ? "err" : kind === "warn" ? "warn" : "ok";
+  const bg = k === "err" ? "rgba(220, 38, 38, 0.92)" : k === "warn" ? "rgba(217, 119, 6, 0.92)" : "rgba(22, 163, 74, 0.92)";
+
+  toastEl.textContent = String(msg || "");
+  toastEl.style.maxWidth = "520px";
+  toastEl.style.marginTop = "8px";
+  toastEl.style.padding = "10px 12px";
+  toastEl.style.borderRadius = "12px";
+  toastEl.style.background = bg;
+  toastEl.style.color = "#fff";
+  toastEl.style.boxShadow = "0 12px 30px rgba(0,0,0,0.28)";
+  toastEl.style.fontFamily = "system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif";
+  toastEl.style.fontSize = "13px";
+  toastEl.style.lineHeight = "1.35";
+  toastEl.style.pointerEvents = "none";
+  toastEl.style.opacity = "1";
+  toastEl.style.transform = "translateY(0)";
+
+  toastHideTimer = setTimeout(() => {
+    if (!toastEl) return;
+    toastEl.style.opacity = "0";
+    toastEl.style.transform = "translateY(6px)";
+    toastRemoveTimer = setTimeout(() => {
+      try {
+        if (toastEl && toastEl.parentNode) toastEl.parentNode.removeChild(toastEl);
+      } catch {
+        // ignore
+      }
+      toastEl = null;
+    }, 220);
+  }, 2600);
+}
+
 function logLine(s: string) {
   const log = byId<HTMLPreElement>("log");
   if (!log) return;
@@ -111,6 +178,19 @@ async function uploadPickedFile(file: File, kind: UploadKind): Promise<{ path: s
   if (!resp.ok) throw new Error(String((data as any)?.error || ("HTTP " + resp.status)));
   if (!(data as any)?.path) throw new Error("Upload response missing path");
   return { path: String((data as any).path), filename: (data as any).filename ? String((data as any).filename) : undefined };
+}
+
+function isCurrentUploadPath(p: string): boolean {
+  const s = String(p || "");
+  return s.includes("/.ui_uploads/current/") || s.includes("\\.ui_uploads\\current\\") || s.startsWith(".ui_uploads/current/") || s.startsWith(".ui_uploads\\current\\");
+}
+
+async function deleteCurrentUpload(kind: Exclude<UploadKind, "include">): Promise<number> {
+  const url = "/api/upload/delete?kind=" + encodeURIComponent(kind);
+  const resp = await fetch(url, { method: "POST" });
+  const data = await resp.json().catch(() => ({}));
+  if (!resp.ok) throw new Error(String((data as any)?.error || ("HTTP " + resp.status)));
+  return Number((data as any)?.deleted || 0);
 }
 
 const API_KEYS_STORAGE_KEY = "ai-schematics-ensemble-ui-api-keys";
@@ -433,11 +513,30 @@ function clearPicked(kind: "question" | "baselineNetlist" | "baselineImage") {
   const pathId = kind === "question" ? "questionPath" : kind === "baselineNetlist" ? "baselineNetlistPath" : "baselineImagePath";
   const hintId = kind === "question" ? "questionPickedHint" : kind === "baselineNetlist" ? "baselineNetlistPickedHint" : "baselineImagePickedHint";
 
+  const prev = getEffectivePath(pathId);
+
   setPathBox(pathId, "", "");
   const f = byId<HTMLInputElement>(fileId);
   if (f) f.value = "";
   setPickedHint(hintId, "");
   updateCommandPreview();
+
+  showToast("ok", "Cleared.");
+
+  // If this input was pointing at the stable snapshot location, delete it too.
+  if (isCurrentUploadPath(prev)) {
+    void deleteCurrentUpload(kind)
+      .then((deleted) => {
+        if (deleted > 0) {
+          setStatus("ok", "Cleared and deleted uploaded snapshot.");
+          showToast("ok", "Deleted uploaded snapshot.");
+        }
+      })
+      .catch((e: any) => {
+        setStatus("warn", "Cleared, but could not delete uploaded snapshot: " + String(e?.message || e));
+        showToast("warn", "Could not delete uploaded snapshot (see status).");
+      });
+  }
 }
 
 function setConfig(cfg: UiDefaults) {

@@ -1439,6 +1439,14 @@
         const f = fileEl && fileEl.files && fileEl.files[0];
         if (!f) return;
 
+        // Allow re-selecting the same file later.
+        // (Browsers often won't fire "change" if the same file is picked twice.)
+        try {
+          fileEl.value = "";
+        } catch {
+          // ignore
+        }
+
         // Immediately reflect selection in the textbox.
         try {
           setPathBoxMode(pathEl, "path");
@@ -1645,6 +1653,70 @@
           if (els.baselineImageFile) els.baselineImageFile.value = "";
           setPickedHint(els.baselineImagePickedHint, "");
         }
+
+        try {
+          showToast("ok", "Cleared.");
+        } catch {
+          // ignore
+        }
+
+        // If served by the local UI server, also delete the stable uploaded snapshot.
+        // (No-op if it doesn't exist.)
+        if (IS_SERVER) {
+          hasUploadApi()
+            .then((ok) => {
+              if (!ok) return;
+              const u = new URL("/api/upload/delete", location.href);
+              u.searchParams.set("kind", String(kind || ""));
+              return fetch(String(u), { method: "POST" });
+            })
+            .then(async (resp) => {
+              if (!resp) return;
+              const text = await resp.text();
+              let j;
+              try {
+                j = text ? JSON.parse(text) : {};
+              } catch {
+                j = {};
+              }
+              if (resp.ok) {
+                const n = Number((j && j.deleted) || 0);
+                if (n > 0) {
+                  setStatus("ok", "Cleared and deleted uploaded snapshot.");
+                  try {
+                    showToast("ok", "Deleted uploaded snapshot.");
+                  } catch {
+                    // ignore
+                  }
+                }
+              } else {
+                setStatus(
+                  "warn",
+                  "Cleared, but could not delete uploaded snapshot: " +
+                    String((j && j.error) || "HTTP " + resp.status),
+                );
+                try {
+                  showToast(
+                    "warn",
+                    "Could not delete uploaded snapshot (see status).",
+                  );
+                } catch {
+                  // ignore
+                }
+              }
+            })
+            .catch(() => {
+              try {
+                showToast(
+                  "warn",
+                  "Could not delete uploaded snapshot (see status).",
+                );
+              } catch {
+                // ignore
+              }
+            });
+        }
+
         updatePreview();
       }
 
@@ -2456,7 +2528,18 @@
 
       if (els.includeFiles) {
         els.includeFiles.addEventListener("change", () => {
-          uploadIncludes(els.includeFiles.files);
+          const picked = els.includeFiles.files
+            ? Array.from(els.includeFiles.files)
+            : [];
+
+          // Allow re-selecting the same files later.
+          try {
+            els.includeFiles.value = "";
+          } catch {
+            // ignore
+          }
+
+          uploadIncludes(picked);
         });
       }
       if (els.includeClearBtn) {

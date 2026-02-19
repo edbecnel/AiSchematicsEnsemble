@@ -1007,6 +1007,50 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
         return;
       }
 
+      if (method === "POST" && pathname === "/api/upload/delete") {
+        try {
+          const u = new URL(req.url || "/api/upload/delete", `http://${String(req.headers.host ?? "localhost")}`);
+          const kind = getSingleQueryParam(u, "kind");
+          const kindBase =
+            kind === "question"
+              ? "question"
+              : kind === "baselineNetlist"
+                ? "baseline_netlist"
+                : kind === "baselineImage"
+                  ? "baseline_image"
+                  : undefined;
+          if (!kindBase) {
+            sendJson(res, 400, { error: "Invalid kind" });
+            return;
+          }
+
+          const currentDir = path.join(uploadRootDir, "current");
+          const ok = await fs.pathExists(currentDir);
+          if (!ok) {
+            sendJson(res, 200, { ok: true, deleted: 0, kind });
+            return;
+          }
+
+          const entries = await fs.readdir(currentDir).catch(() => [] as string[]);
+          const targets = entries.filter((name) => {
+            const n = String(name || "");
+            return n === kindBase || n.startsWith(kindBase + ".");
+          });
+
+          let deleted = 0;
+          for (const name of targets) {
+            const abs = path.join(currentDir, name);
+            await fs.remove(abs).catch(() => undefined);
+            deleted++;
+          }
+
+          sendJson(res, 200, { ok: true, deleted, kind });
+        } catch (e: any) {
+          sendJson(res, 400, { error: String(e?.message ?? e) });
+        }
+        return;
+      }
+
       if (method === "POST" && pathname === "/api/exists") {
         try {
           const body = await readRequestBody(req);
