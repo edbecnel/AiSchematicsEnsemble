@@ -571,6 +571,17 @@ You can provide either or both:
 
 If you omit either one **and you’re running interactively**, the CLI will prompt you to add them.
 
+#### Exporting a KiCad 9.0 SPICE netlist (`.cir`)
+
+In KiCad 9.0 (Schematic Editor):
+
+1. Open your schematic.
+2. Open **Export Netlist…** and switch to the **SPICE** tab.
+3. Check only **Save all voltages** and **Save all currents** (leave the other SPICE options unchecked).
+4. Click **Save...** and save as `baseline.cir`.
+
+Then pass it into the tool with `--baseline-netlist baseline.cir`.
+
 #### Converting a KiCad schematic PDF to a PNG baseline image
 
 If you printed your schematic to PDF from KiCad, you can convert the PDF to a high-res PNG using Poppler’s `pdftoppm`:

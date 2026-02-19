@@ -464,7 +464,8 @@
               </td>
               <td>
                 Use <code>Bundle includes</code> if your netlist uses
-                <code>.include</code> / <code>.lib</code> files.
+                <code>.include</code> / <code>.lib</code> files. See
+                <a href="#kicad9-spice-netlist">KiCad 9.0 export steps</a>.
               </td>
             </tr>
             <tr>
@@ -557,6 +558,43 @@
             </tr>
           </tbody>
         </table>
+
+        <h3 id="kicad9-spice-netlist">
+          KiCad 9.0: export a SPICE netlist (.cir)
+        </h3>
+        <p>
+          To create a baseline netlist from KiCad 9.0, export a SPICE-format
+          netlist and save it as a <code>.cir</code> file.
+        </p>
+        <ol>
+          <li>
+            Open your project in KiCad and open the schematic (Schematic
+            Editor).
+          </li>
+          <li>
+            Open <strong>Export Netlist…</strong> (search the menu for “Export
+            Netlist” if needed).
+          </li>
+          <li>
+            In the Export Netlist dialog, choose the <strong>SPICE</strong> tab.
+          </li>
+          <li>
+            Check only:
+            <strong>Save all voltages</strong> and
+            <strong>Save all currents</strong>. Leave the other SPICE options
+            unchecked.
+          </li>
+          <li>
+            Click <span class="kbd">Save...</span> and save the file as
+            something like <code>baseline.cir</code>.
+          </li>
+        </ol>
+        <div class="note">
+          If the exported netlist references other files via
+          <code>.include</code> / <code>.lib</code>, enable
+          <code>Bundle includes</code> so the CLI copies those dependencies into
+          the run folder.
+        </div>
 
         <h3>Models (optional)</h3>
         <p>
