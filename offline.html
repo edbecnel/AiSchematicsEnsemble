@@ -238,6 +238,52 @@
       .err {
         color: #dc2626;
       }
+
+      .toastHost {
+        position: fixed;
+        right: 16px;
+        bottom: 16px;
+        z-index: 9999;
+        pointer-events: none;
+      }
+      .toast {
+        pointer-events: auto;
+        max-width: min(520px, calc(100vw - 32px));
+        padding: 10px 12px;
+        border-radius: 12px;
+        border: 1px solid var(--border);
+        background: rgba(127, 127, 127, 0.16);
+        color: var(--fg);
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+        opacity: 0;
+        transform: translateY(8px);
+        transition:
+          opacity 160ms ease,
+          transform 160ms ease;
+      }
+      .toast.show {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .toast-ok {
+        border-color: rgba(22, 163, 74, 0.55);
+        background: rgba(22, 163, 74, 0.14);
+      }
+      .toast-warn {
+        border-color: rgba(217, 119, 6, 0.55);
+        background: rgba(217, 119, 6, 0.14);
+      }
+      .toast-err {
+        border-color: rgba(220, 38, 38, 0.55);
+        background: rgba(220, 38, 38, 0.14);
+      }
+
+      @media (max-width: 620px) {
+        .toastHost {
+          left: 16px;
+          right: 16px;
+        }
+      }
     </style>
   </head>
   <body>
@@ -705,6 +751,13 @@
     </main>
 
     <div
+      id="toastHost"
+      class="toastHost"
+      aria-live="polite"
+      aria-atomic="true"
+    ></div>
+
+    <div
       id="keysModal"
       style="
         position: fixed;
@@ -887,6 +940,7 @@
         cmdExplicit: document.getElementById("cmdExplicit"),
         cmdChat: document.getElementById("cmdChat"),
         status: document.getElementById("status"),
+        toastHost: document.getElementById("toastHost"),
         updateBtn: document.getElementById("updateBtn"),
         saveLocalBtn: document.getElementById("saveLocalBtn"),
         loadLocalBtn: document.getElementById("loadLocalBtn"),
@@ -1192,6 +1246,47 @@
                 ? "err"
                 : "hint";
         els.status.textContent = msg;
+      }
+
+      let toastHideTimer = null;
+      let toastRemoveTimer = null;
+      let toastEl = null;
+
+      function showToast(kind, msg) {
+        if (!els.toastHost) return;
+        if (toastHideTimer) clearTimeout(toastHideTimer);
+        if (toastRemoveTimer) clearTimeout(toastRemoveTimer);
+
+        if (!toastEl) {
+          toastEl = document.createElement("div");
+          toastEl.className = "toast";
+          els.toastHost.appendChild(toastEl);
+        }
+
+        const k =
+          kind === "ok" || kind === "warn" || kind === "err" ? kind : "ok";
+        toastEl.className = "toast toast-" + k;
+        toastEl.textContent = String(msg || "");
+
+        // Restart animation
+        toastEl.classList.remove("show");
+        // Force layout so the subsequent add triggers the transition.
+        void toastEl.offsetWidth;
+        toastEl.classList.add("show");
+
+        toastHideTimer = setTimeout(() => {
+          if (!toastEl) return;
+          toastEl.classList.remove("show");
+          toastRemoveTimer = setTimeout(() => {
+            try {
+              if (toastEl && toastEl.parentNode)
+                toastEl.parentNode.removeChild(toastEl);
+            } catch {
+              // ignore
+            }
+            toastEl = null;
+          }, 220);
+        }, 2800);
       }
 
       function setPickedHint(el, msg) {
@@ -2043,14 +2138,20 @@
       }
 
       async function copyText(text) {
+        const t = String(text || "");
+        if (!t.trim()) {
+          setStatus("warn", "Nothing to copy.");
+          return "warn";
+        }
         try {
-          await navigator.clipboard.writeText(text);
+          await navigator.clipboard.writeText(t);
           setStatus("ok", "Copied to clipboard.");
+          return "ok";
         } catch {
           // Fallback for environments where Clipboard API is blocked.
           try {
             const ta = document.createElement("textarea");
-            ta.value = text;
+            ta.value = t;
             ta.setAttribute("readonly", "");
             ta.style.position = "fixed";
             ta.style.left = "-10000px";
@@ -2061,7 +2162,7 @@
             document.body.removeChild(ta);
             if (ok) {
               setStatus("ok", "Copied to clipboard.");
-              return;
+              return "ok";
             }
           } catch {
             // ignore
@@ -2070,6 +2171,7 @@
             "err",
             "Clipboard copy failed. Select the text and copy manually.",
           );
+          return "err";
         }
       }
 
@@ -2392,26 +2494,62 @@
         if (f) importJson(f);
       });
 
-      els.copyJsonPsBtn.addEventListener("click", () =>
-        copyText(
+      els.copyJsonPsBtn.addEventListener("click", async () => {
+        const result = await copyText(
           els.cmdJson.value
             .split("\n\ncmd.exe:")[0]
             .replace("PowerShell:\n", ""),
-        ),
-      );
-      els.copyJsonCmdBtn.addEventListener("click", () =>
-        copyText(els.cmdJson.value.split("\n\ncmd.exe:\n")[1] || ""),
-      );
-      els.copyExplicitPsBtn.addEventListener("click", () =>
-        copyText(
+        );
+        showToast(
+          result,
+          result === "ok"
+            ? "JSON config PowerShell copied to the clipboard."
+            : result === "warn"
+              ? "Nothing to copy."
+              : "Clipboard copy failed. Select the text and copy manually.",
+        );
+      });
+      els.copyJsonCmdBtn.addEventListener("click", async () => {
+        const result = await copyText(
+          els.cmdJson.value.split("\n\ncmd.exe:\n")[1] || "",
+        );
+        showToast(
+          result,
+          result === "ok"
+            ? "JSON config cmd.exe copied to the clipboard."
+            : result === "warn"
+              ? "Nothing to copy."
+              : "Clipboard copy failed. Select the text and copy manually.",
+        );
+      });
+      els.copyExplicitPsBtn.addEventListener("click", async () => {
+        const result = await copyText(
           els.cmdExplicit.value
             .split("\n\ncmd.exe:")[0]
             .replace("PowerShell:\n", ""),
-        ),
-      );
-      els.copyExplicitCmdBtn.addEventListener("click", () =>
-        copyText(els.cmdExplicit.value.split("\n\ncmd.exe:\n")[1] || ""),
-      );
+        );
+        showToast(
+          result,
+          result === "ok"
+            ? "Explicit parameters PowerShell copied to the clipboard."
+            : result === "warn"
+              ? "Nothing to copy."
+              : "Clipboard copy failed. Select the text and copy manually.",
+        );
+      });
+      els.copyExplicitCmdBtn.addEventListener("click", async () => {
+        const result = await copyText(
+          els.cmdExplicit.value.split("\n\ncmd.exe:\n")[1] || "",
+        );
+        showToast(
+          result,
+          result === "ok"
+            ? "Explicit parameters cmd.exe copied to the clipboard."
+            : result === "warn"
+              ? "Nothing to copy."
+              : "Clipboard copy failed. Select the text and copy manually.",
+        );
+      });
 
       if (els.chatProvider)
         els.chatProvider.addEventListener("change", updatePreview);
@@ -2419,16 +2557,34 @@
         els.chatMaxHistory.addEventListener("input", updatePreview);
       if (els.chatSave) els.chatSave.addEventListener("change", updatePreview);
 
-      els.copyChatPsBtn.addEventListener("click", () =>
-        copyText(
+      els.copyChatPsBtn.addEventListener("click", async () => {
+        const result = await copyText(
           els.cmdChat.value
             .split("\n\ncmd.exe:")[0]
             .replace("PowerShell:\n", ""),
-        ),
-      );
-      els.copyChatCmdBtn.addEventListener("click", () =>
-        copyText(els.cmdChat.value.split("\n\ncmd.exe:\n")[1] || ""),
-      );
+        );
+        showToast(
+          result,
+          result === "ok"
+            ? "Interactive chat PowerShell copied to the clipboard."
+            : result === "warn"
+              ? "Nothing to copy."
+              : "Clipboard copy failed. Select the text and copy manually.",
+        );
+      });
+      els.copyChatCmdBtn.addEventListener("click", async () => {
+        const result = await copyText(
+          els.cmdChat.value.split("\n\ncmd.exe:\n")[1] || "",
+        );
+        showToast(
+          result,
+          result === "ok"
+            ? "Interactive chat cmd.exe copied to the clipboard."
+            : result === "warn"
+              ? "Nothing to copy."
+              : "Clipboard copy failed. Select the text and copy manually.",
+        );
+      });
 
       // Header links: show help when served by the UI server.
       if (IS_SERVER) {
