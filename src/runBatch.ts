@@ -534,12 +534,12 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     answers: answersForReport,
   });
 
-  const reportPdf = path.join(runDir, "report.pdf");
-  logger.info("Writing report.pdf...");
+  const reportPdf = path.join(runDir, "report-auto.pdf");
+  logger.info("Writing report-auto.pdf...");
 
   const converted = await convertDocxToPdfViaLibreOffice({ docxPath: reportDocx, pdfOutPath: reportPdf });
   if (converted.ok) {
-    logger.info(`Rendered report.pdf from report.docx via ${converted.method}.`);
+    logger.info(`Rendered report-auto.pdf from report.docx via ${converted.method}.`);
   } else {
     logger.warn(`DOCX→PDF conversion not available (${converted.reason}); falling back to built-in PDF renderer.`);
     await writeReportPdf({

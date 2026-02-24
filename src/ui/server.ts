@@ -629,7 +629,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
           <button id="viewSchematicPngBtn" disabled>View SPICE netlist PNG image</button>
           <button id="downloadAnswersMdBtn" disabled>Download AI .md files</button>
           <button id="downloadReportBtn" disabled>Download report.docx</button>
-          <button id="downloadReportPdfBtn" disabled>Download report.pdf</button>
+          <button id="downloadReportPdfBtn" disabled>Download report-auto.pdf</button>
         </div>
         <pre id="log"></pre>
       </div>
