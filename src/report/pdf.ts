@@ -139,6 +139,7 @@ export async function writeReportPdf(args: {
   finalMarkdown: string;
   spiceNetlist: string;
   baselineSchematicPath?: string;
+  traceImagePaths?: string[];
   connectivitySchematicPngPath?: string;
   answers?: Array<{ heading: string; markdown: string }>;
 }): Promise<void> {
@@ -183,6 +184,20 @@ export async function writeReportPdf(args: {
   if (args.baselineSchematicPath && (await fs.pathExists(args.baselineSchematicPath))) {
     await addImageBestEffort(doc, args.baselineSchematicPath, "Baseline Schematic Screenshot");
   }
+
+  const tracePaths = Array.isArray(args.traceImagePaths)
+    ? args.traceImagePaths.map((p) => String(p || "").trim()).filter(Boolean)
+    : [];
+  for (const p of tracePaths) {
+    if (!(await fs.pathExists(p))) {
+      heading(doc, "Oscilloscope Trace Image", 1);
+      paragraph(doc, `Trace image not found: ${p}`);
+      continue;
+    }
+    const name = path.basename(p);
+    await addImageBestEffort(doc, p, `Oscilloscope Trace: ${sanitizeText(name)}`);
+  }
+
   if (args.connectivitySchematicPngPath && (await fs.pathExists(args.connectivitySchematicPngPath))) {
     await addImageBestEffort(doc, args.connectivitySchematicPngPath, "Connectivity Schematic (Netlist-Derived)");
   }

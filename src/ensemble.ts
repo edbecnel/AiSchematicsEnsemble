@@ -11,6 +11,7 @@ export function buildEnsemblePrompt(args: {
   question: string;
   baselineNetlist?: string;
   baselineImageFilename?: string;
+  traceImageFilenames?: string[];
   answers: ModelAnswer[];
 }): string {
   const blocks = args.answers
@@ -31,13 +32,20 @@ export function buildEnsemblePrompt(args: {
     ? `\nSCHEMATIC SCREENSHOT PROVIDED: ${args.baselineImageFilename}\n- Use the attached image as reference for topology/components.\n- If it conflicts with any model text, prefer the screenshot + baseline netlist.\n`
     : "";
 
+  const traceList = Array.isArray(args.traceImageFilenames)
+    ? args.traceImageFilenames.map((s) => String(s || "").trim()).filter(Boolean)
+    : [];
+  const traceNote = traceList.length
+    ? `\nOSCILLOSCOPE TRACE IMAGE(S) PROVIDED (${traceList.length}): ${traceList.join(", ")}\n- Treat them as measurement evidence (voltage/current vs time).\n- Use them to validate/invalidate assumptions and propose what to measure next.\n`
+    : "";
+
   return `You are an expert electrical engineer + experimentalist.
 Your job is to ensemble multiple AI outputs into a single careful recommendation.
   We are working on arbitrary electrical circuits/schematics; focus on testable advice.
 
 QUESTION:
 ${args.question.trim()}
-${baseline}${baselineImageNote}
+${baseline}${baselineImageNote}${traceNote}
 
 MODEL OUTPUTS:
 ${blocks}

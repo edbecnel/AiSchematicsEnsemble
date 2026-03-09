@@ -497,6 +497,54 @@
             </div>
           </div>
           <div class="row">
+            <label>Oscilloscope traces</label>
+            <div>
+              <div style="display: flex; gap: 8px; align-items: center">
+                <input
+                  id="traceImagesSummary"
+                  type="text"
+                  value=""
+                  placeholder="(optional)"
+                  readonly
+                  class="subduedPath"
+                />
+                <label
+                  class="btnLike"
+                  for="traceImageFiles"
+                  title="Browse trace images"
+                  >...</label
+                >
+                <button
+                  type="button"
+                  id="traceImagesClearBtn"
+                  title="Clear"
+                  style="padding: 8px 10px"
+                >
+                  ✕
+                </button>
+                <input
+                  id="traceImageFiles"
+                  type="file"
+                  multiple
+                  accept="image/*"
+                  style="
+                    position: absolute;
+                    left: -10000px;
+                    width: 1px;
+                    height: 1px;
+                    opacity: 0;
+                  "
+                />
+              </div>
+              <div class="hint">
+                Provide one or more screenshots of oscilloscope traces to use as
+                measurement evidence.
+              </div>
+              <div class="hint" id="traceImagesList"></div>
+              <div class="hint" id="traceImagesPickedHint"></div>
+            </div>
+          </div>
+          <div class="row">
             <label>Outdir</label><input id="outdir" type="text" value="runs" />
           </div>
           <div class="row">
@@ -899,17 +947,20 @@
         questionPath: document.getElementById("questionPath"),
         baselineNetlistPath: document.getElementById("baselineNetlistPath"),
         baselineImagePath: document.getElementById("baselineImagePath"),
+        traceImagesSummary: document.getElementById("traceImagesSummary"),
         includeSummary: document.getElementById("includeSummary"),
         questionFile: document.getElementById("questionFile"),
         baselineNetlistFile: document.getElementById("baselineNetlistFile"),
         includeFiles: document.getElementById("includeFiles"),
         baselineImageFile: document.getElementById("baselineImageFile"),
+        traceImageFiles: document.getElementById("traceImageFiles"),
         questionClearBtn: document.getElementById("questionClearBtn"),
         baselineNetlistClearBtn: document.getElementById(
           "baselineNetlistClearBtn",
         ),
         includeClearBtn: document.getElementById("includeClearBtn"),
         baselineImageClearBtn: document.getElementById("baselineImageClearBtn"),
+        traceImagesClearBtn: document.getElementById("traceImagesClearBtn"),
         questionPickedHint: document.getElementById("questionPickedHint"),
         baselineNetlistPickedHint: document.getElementById(
           "baselineNetlistPickedHint",
@@ -918,6 +969,8 @@
         baselineImagePickedHint: document.getElementById(
           "baselineImagePickedHint",
         ),
+        traceImagesList: document.getElementById("traceImagesList"),
+        traceImagesPickedHint: document.getElementById("traceImagesPickedHint"),
         outdir: document.getElementById("outdir"),
         schematicDpi: document.getElementById("schematicDpi"),
         bundleIncludes: document.getElementById("bundleIncludes"),
@@ -1033,9 +1086,57 @@
         question: { text: "", filename: "" },
         baselineNetlist: { text: "", filename: "" },
         baselineImage: { base64: "", mimeType: "", filename: "" },
+        traceImages: [],
       };
 
       let includeUploads = [];
+
+      let traceImageUploads = [];
+
+      function renderTraceImageUploads() {
+        const names = Array.isArray(traceImageUploads)
+          ? traceImageUploads
+              .map((x) => String((x && x.name) || "").trim())
+              .filter(Boolean)
+          : [];
+        if (els.traceImagesSummary) {
+          els.traceImagesSummary.value = names.length ? names.join(", ") : "";
+        }
+        if (els.traceImagesList) {
+          els.traceImagesList.textContent = names.length
+            ? names.map((n) => `- ${n}`).join("\n")
+            : "";
+        }
+      }
+
+      function clearTraceImages() {
+        traceImageUploads = [];
+        embedded.traceImages = [];
+        if (els.traceImageFiles) els.traceImageFiles.value = "";
+        if (els.traceImagesPickedHint)
+          els.traceImagesPickedHint.textContent = "";
+        renderTraceImageUploads();
+
+        try {
+          showToast("ok", "Cleared.");
+        } catch {
+          // ignore
+        }
+
+        // If served by the local UI server, also delete the stable uploaded snapshot(s).
+        if (IS_SERVER) {
+          hasUploadApi()
+            .then((ok) => {
+              if (!ok) return;
+              const u = new URL("/api/upload/delete", location.href);
+              u.searchParams.set("kind", "traceImage");
+              return fetch(String(u), { method: "POST" });
+            })
+            .catch(() => {
+              // ignore
+            });
+        }
+      }
 
       function renderIncludeUploads() {
         const names = includeUploads
@@ -1134,6 +1235,8 @@
           embedded.baselineImage.base64 = "";
           embedded.baselineImage.mimeType = "";
           embedded.baselineImage.filename = "";
+        } else if (kind === "traceImages") {
+          embedded.traceImages = [];
         }
       }
 
@@ -1179,6 +1282,24 @@
         const hasEmbeddedBaselineImage =
           !!embedded.baselineImage.base64 && !!embedded.baselineImage.mimeType;
 
+        const traceImagesEmbeddedRaw = Array.isArray(embedded.traceImages)
+          ? embedded.traceImages
+          : [];
+        const traceImagesEmbedded = traceImagesEmbeddedRaw
+          .map((x) => ({
+            base64: String((x && x.base64) || ""),
+            mimeType: String((x && x.mimeType) || ""),
+            filename: String((x && x.filename) || ""),
+          }))
+          .filter((x) => x.base64 && x.mimeType);
+        const traceImagePaths = traceImagesEmbedded.length
+          ? []
+          : Array.isArray(traceImageUploads)
+            ? traceImageUploads
+                .map((x) => String((x && x.path) || "").trim())
+                .filter(Boolean)
+            : [];
+
         const dpiRaw = clean(els.schematicDpi.value);
         const dpiParsed = dpiRaw ? Number.parseInt(dpiRaw, 10) : NaN;
         const dpi =
@@ -1216,6 +1337,14 @@
                   filename: embedded.baselineImage.filename || undefined,
                 }
               : undefined,
+          traceImagePaths: traceImagePaths.length ? traceImagePaths : undefined,
+          traceImages: traceImagesEmbedded.length
+            ? traceImagesEmbedded.map((x) => ({
+                mimeType: x.mimeType,
+                base64: x.base64,
+                filename: x.filename || undefined,
+              }))
+            : undefined,
           includeUploads: Array.isArray(includeUploads)
             ? includeUploads
                 .map((x) => ({
@@ -1292,6 +1421,34 @@
       function setPickedHint(el, msg) {
         if (!el) return;
         el.textContent = msg || "";
+      }
+
+      async function sameDirFileSeemsReachableByName(fileName) {
+        const name = clean(fileName);
+        if (!name) return false;
+        // Only attempt this for basenames (no paths). This is meant to detect
+        // files sitting next to offline.html.
+        if (/[\\/]/g.test(name)) return false;
+        try {
+          const u = new URL(name, location.href);
+          try {
+            const head = await fetch(String(u), {
+              method: "HEAD",
+              cache: "no-store",
+            });
+            if (head && head.ok) return true;
+          } catch {
+            // Some environments (notably file://) may not support HEAD.
+          }
+
+          const get = await fetch(String(u), {
+            method: "GET",
+            cache: "no-store",
+          });
+          return Boolean(get && get.ok);
+        } catch {
+          return false;
+        }
       }
 
       function uploadToServer(file, kind) {
@@ -1511,34 +1668,6 @@
           return;
         }
 
-        async function sameDirFileSeemsReachableByName(fileName) {
-          const name = clean(fileName);
-          if (!name) return false;
-          // Only attempt this for basenames (no paths). This is meant to detect
-          // files sitting next to offline.html.
-          if (/[\\/]/g.test(name)) return false;
-          try {
-            const u = new URL(name, location.href);
-            try {
-              const head = await fetch(String(u), {
-                method: "HEAD",
-                cache: "no-store",
-              });
-              if (head && head.ok) return true;
-            } catch {
-              // Some environments (notably file://) may not support HEAD.
-            }
-
-            const get = await fetch(String(u), {
-              method: "GET",
-              cache: "no-store",
-            });
-            return Boolean(get && get.ok);
-          } catch {
-            return false;
-          }
-        }
-
         const baseDir = getBaseInputDir();
         const joinedName = joinBaseDirAndName(baseDir, f.name);
 
@@ -1627,6 +1756,198 @@
           setStatus(
             "warn",
             "Could not embed file contents. Paste the full path (or use a relative path) or run: npm run ui. " +
+              String(e?.message || e),
+          );
+        }
+        updatePreview();
+      }
+
+      async function pickTraceImages() {
+        const fileEl = els.traceImageFiles;
+        const hintEl = els.traceImagesPickedHint;
+        const files = fileEl && fileEl.files ? Array.from(fileEl.files) : [];
+        if (!files.length) return;
+
+        // Allow re-selecting the same files later.
+        try {
+          fileEl.value = "";
+        } catch {
+          // ignore
+        }
+
+        // Immediately reflect selection in the UI.
+        traceImageUploads = files.map((f) => ({
+          name: f.name || "trace",
+          path: "",
+        }));
+        renderTraceImageUploads();
+        setPickedHint(hintEl, `Picked ${files.length} file(s).`);
+
+        const canUpload = await hasUploadApi();
+        if (canUpload) {
+          clearEmbedded("traceImages");
+          setStatus("hint", `Uploading ${files.length} trace image(s)...`);
+          Promise.all(files.map((f) => uploadToServer(f, "traceImage")))
+            .then((saved) => {
+              const uploaded = saved
+                .map((s, i) => ({
+                  name: String(
+                    (s && (s.filename || s.originalFilename)) ||
+                      (files[i] && files[i].name) ||
+                      "trace",
+                  ),
+                  path: String((s && s.path) || ""),
+                }))
+                .filter((x) => x.name || x.path);
+              traceImageUploads = uploaded;
+              renderTraceImageUploads();
+              setPickedHint(
+                hintEl,
+                `Picked ${uploaded.length} trace image(s) (uploaded).`,
+              );
+              setStatus("ok", "Uploaded. (Snapshot — re-upload after edits.)");
+              updatePreview();
+            })
+            .catch(async (e) => {
+              const msg = String(e?.message || e);
+              try {
+                setStatus("hint", "Upload failed; retrying raw upload...");
+                const saved2 = await Promise.all(
+                  files.map((f) => uploadToServerRaw(f, "traceImage")),
+                );
+                const uploaded2 = saved2
+                  .map((s, i) => ({
+                    name: String(
+                      (s && (s.filename || s.originalFilename)) ||
+                        (files[i] && files[i].name) ||
+                        "trace",
+                    ),
+                    path: String((s && s.path) || ""),
+                  }))
+                  .filter((x) => x.name || x.path);
+                traceImageUploads = uploaded2;
+                renderTraceImageUploads();
+                setPickedHint(
+                  hintEl,
+                  `Picked ${uploaded2.length} trace image(s) (uploaded).`,
+                );
+                setStatus(
+                  "ok",
+                  "Uploaded. (Snapshot — re-upload after edits.)",
+                );
+                updatePreview();
+                return;
+              } catch (e2) {
+                const msg2 = String(e2?.message || e2);
+                setStatus(
+                  "warn",
+                  "Upload failed; using filename only: " + msg + " | " + msg2,
+                );
+              }
+              // Final fallback to filename-only
+              const baseDir = getBaseInputDir();
+              traceImageUploads = files.map((f) => ({
+                name: f.name || "trace",
+                path: joinBaseDirAndName(baseDir, f.name) || f.name,
+              }));
+              renderTraceImageUploads();
+              setPickedHint(
+                hintEl,
+                `Picked ${traceImageUploads.length} trace image(s) (filename only).`,
+              );
+              updatePreview();
+            });
+          return;
+        }
+
+        const baseDir = getBaseInputDir();
+
+        try {
+          // Prefer filename-only if we can verify the files are reachable next to this page.
+          if (!baseDir) {
+            const reachable = await Promise.all(
+              files.map((f) => sameDirFileSeemsReachableByName(f.name)),
+            );
+            if (reachable.every(Boolean)) {
+              clearEmbedded("traceImages");
+              traceImageUploads = files.map((f) => ({
+                name: f.name || "trace",
+                path: f.name,
+              }));
+              renderTraceImageUploads();
+              setPickedHint(
+                hintEl,
+                `Picked ${files.length} trace image(s) (using filename only).`,
+              );
+              setStatus(
+                "ok",
+                "Using filename only (files appear reachable next to this page).",
+              );
+              updatePreview();
+              return;
+            }
+          }
+
+          // User override: prefer filename-only even if we can't verify reachability.
+          if (els.preferFilenameOnly && els.preferFilenameOnly.checked) {
+            clearEmbedded("traceImages");
+            traceImageUploads = files.map((f) => ({
+              name: f.name || "trace",
+              path: joinBaseDirAndName(baseDir, f.name) || f.name,
+            }));
+            renderTraceImageUploads();
+            setPickedHint(
+              hintEl,
+              `Picked ${files.length} trace image(s) (filename only — not embedded).`,
+            );
+            setStatus(
+              "warn",
+              "Using filename only because the toggle is on. Ensure the files exist relative to where you run the CLI.",
+            );
+            updatePreview();
+            return;
+          }
+
+          // Embed bytes into JSON config
+          clearEmbedded("traceImages");
+          const embeddedTraces = [];
+          for (const f of files) {
+            const ab = await f.arrayBuffer();
+            embeddedTraces.push({
+              base64: arrayBufferToBase64(ab),
+              mimeType: String(f.type || "application/octet-stream"),
+              filename: f.name || "trace",
+            });
+          }
+          embedded.traceImages = embeddedTraces;
+          traceImageUploads = files.map((f) => ({
+            name: f.name || "trace",
+            path: "",
+          }));
+          renderTraceImageUploads();
+          setPickedHint(
+            hintEl,
+            `Picked ${files.length} trace image(s) (embedded in JSON config).`,
+          );
+          setStatus(
+            "ok",
+            "Embedded trace images into JSON config. Download the JSON config and run the JSON-config command.",
+          );
+        } catch (e) {
+          // Fallback: filename only
+          clearEmbedded("traceImages");
+          traceImageUploads = files.map((f) => ({
+            name: f.name || "trace",
+            path: joinBaseDirAndName(baseDir, f.name) || f.name,
+          }));
+          renderTraceImageUploads();
+          setPickedHint(
+            hintEl,
+            `Picked ${files.length} trace image(s) (paste real paths if needed).`,
+          );
+          setStatus(
+            "warn",
+            "Could not embed trace images. Paste full paths (or use relative paths) or run: npm run ui. " +
               String(e?.message || e),
           );
         }
@@ -2008,6 +2329,9 @@
           args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
         if (cfg.baselineImagePath)
           args.push("--baseline-image", q(cfg.baselineImagePath));
+        if (Array.isArray(cfg.traceImagePaths)) {
+          for (const p of cfg.traceImagePaths) args.push("--trace-image", q(p));
+        }
         if (cfg.bundleIncludes) args.push("--bundle-includes");
         if (cfg.outdir) args.push("--outdir", q(cfg.outdir));
         args.push("--schematic-dpi", q(cfg.schematicDpi || 600));
@@ -2037,6 +2361,9 @@
           args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
         if (cfg.baselineImagePath)
           args.push("--baseline-image", q(cfg.baselineImagePath));
+        if (Array.isArray(cfg.traceImagePaths)) {
+          for (const p of cfg.traceImagePaths) args.push("--trace-image", q(p));
+        }
         if (enabled.includes("openai") && cfg.openaiModel)
           args.push("--openai-model", q(cfg.openaiModel));
         if (enabled.includes("xai") && cfg.grokModel)
@@ -2378,6 +2705,47 @@
             els.baselineImagePath.value = cfg.baselineImagePath || "";
           }
 
+          // Trace images (paths or embedded)
+          if (Array.isArray(cfg.traceImages) && cfg.traceImages.length) {
+            embedded.traceImages = cfg.traceImages
+              .map((x) => ({
+                base64: String((x && x.base64) || ""),
+                mimeType: String((x && x.mimeType) || ""),
+                filename: String((x && x.filename) || ""),
+              }))
+              .filter((x) => x.base64 && x.mimeType);
+            traceImageUploads = embedded.traceImages.map((x) => ({
+              name: x.filename || "trace",
+              path: "",
+            }));
+            renderTraceImageUploads();
+            setPickedHint(
+              els.traceImagesPickedHint,
+              `Loaded ${embedded.traceImages.length} embedded trace image(s).`,
+            );
+          } else {
+            embedded.traceImages = [];
+            traceImageUploads = Array.isArray(cfg.traceImagePaths)
+              ? cfg.traceImagePaths
+                  .map((p) => String(p || "").trim())
+                  .filter(Boolean)
+                  .map((p) => ({
+                    name:
+                      String(p)
+                        .split(/[/\\]+/g)
+                        .slice(-1)[0] || p,
+                    path: p,
+                  }))
+              : [];
+            renderTraceImageUploads();
+            setPickedHint(
+              els.traceImagesPickedHint,
+              traceImageUploads.length
+                ? `Loaded ${traceImageUploads.length} trace image path(s).`
+                : "",
+            );
+          }
+
           includeUploads = Array.isArray(cfg.includeUploads)
             ? cfg.includeUploads
                 .map((x) => ({
@@ -2494,6 +2862,47 @@
           clearEmbedded("baselineImage");
           setPathBoxMode(els.baselineImagePath, "path");
           els.baselineImagePath.value = cfg.baselineImagePath || "";
+        }
+
+        // Trace images (paths or embedded)
+        if (Array.isArray(cfg.traceImages) && cfg.traceImages.length) {
+          embedded.traceImages = cfg.traceImages
+            .map((x) => ({
+              base64: String((x && x.base64) || ""),
+              mimeType: String((x && x.mimeType) || ""),
+              filename: String((x && x.filename) || ""),
+            }))
+            .filter((x) => x.base64 && x.mimeType);
+          traceImageUploads = embedded.traceImages.map((x) => ({
+            name: x.filename || "trace",
+            path: "",
+          }));
+          renderTraceImageUploads();
+          setPickedHint(
+            els.traceImagesPickedHint,
+            `Imported ${embedded.traceImages.length} embedded trace image(s).`,
+          );
+        } else {
+          embedded.traceImages = [];
+          traceImageUploads = Array.isArray(cfg.traceImagePaths)
+            ? cfg.traceImagePaths
+                .map((p) => String(p || "").trim())
+                .filter(Boolean)
+                .map((p) => ({
+                  name:
+                    String(p)
+                      .split(/[/\\]+/g)
+                      .slice(-1)[0] || p,
+                  path: p,
+                }))
+            : [];
+          renderTraceImageUploads();
+          setPickedHint(
+            els.traceImagesPickedHint,
+            traceImageUploads.length
+              ? `Imported ${traceImageUploads.length} trace image path(s).`
+              : "",
+          );
         }
 
         includeUploads = Array.isArray(cfg.includeUploads)
@@ -2689,6 +3098,11 @@
         els.baselineImageFile.addEventListener("change", () =>
           pickFile("baselineImage"),
         );
+      if (els.traceImageFiles)
+        els.traceImageFiles.addEventListener(
+          "change",
+          () => void pickTraceImages(),
+        );
       if (els.questionClearBtn)
         els.questionClearBtn.addEventListener("click", () =>
           clearPicked("question"),
@@ -2701,6 +3115,11 @@
         els.baselineImageClearBtn.addEventListener("click", () =>
           clearPicked("baselineImage"),
         );
+      if (els.traceImagesClearBtn)
+        els.traceImagesClearBtn.addEventListener("click", () => {
+          clearTraceImages();
+          updatePreview();
+        });
 
       // API keys modal
       const keysOpenBtn = document.getElementById("keysOpenBtn");

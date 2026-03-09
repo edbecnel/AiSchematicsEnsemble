@@ -199,6 +199,21 @@ function sanitizeFileNamePreserveSpaces(name: string): string {
   return trimmed || "file";
 }
 
+async function uniquePath(dir: string, filename: string): Promise<string> {
+  const base = path.basename(filename || "file");
+  const ext = path.extname(base);
+  const stem = base.slice(0, base.length - ext.length) || "file";
+  let candidate = path.join(dir, base);
+  if (!(await fs.pathExists(candidate))) return candidate;
+  for (let i = 2; i <= 2000; i++) {
+    candidate = path.join(dir, `${stem}_${i}${ext}`);
+    if (!(await fs.pathExists(candidate))) return candidate;
+  }
+  // Fallback: random suffix
+  const rand = crypto.randomUUID().slice(0, 8);
+  return path.join(dir, `${stem}_${rand}${ext}`);
+}
+
 async function parseMultipartSingleFile(
   req: http.IncomingMessage,
   opts: { uploadDir: string },
@@ -518,6 +533,20 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
               <input id="baselineImageFile" type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" style="position:absolute; left:-10000px; width:1px; height:1px; opacity:0" />
             </div>
             <div class="hint" id="baselineImagePickedHint"></div>
+          </div>
+        </div>
+
+        <div class="row">
+          <label>Oscilloscope traces</label>
+          <div>
+            <div style="display:flex; gap:8px; align-items:center;">
+              <input id="traceSummary" type="text" value="" placeholder="(optional)" readonly class="subduedPath" />
+              <label class="btnLike" id="traceBrowseBtn" for="traceFiles" title="Browse">...</label>
+              <button type="button" id="traceClearBtn" title="Clear" style="padding: 8px 10px;">✕</button>
+              <input id="traceFiles" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" style="position:absolute; left:-10000px; width:1px; height:1px; opacity:0" />
+            </div>
+            <div class="hint">Upload one or more oscilloscope trace screenshots for the models to interpret.</div>
+            <div class="hint" id="traceFilesList"></div>
           </div>
         </div>
 
@@ -880,6 +909,7 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           const u = new URL(req.url || "/api/upload", `http://${String(req.headers.host ?? "localhost")}`);
           const kind = getSingleQueryParam(u, "kind");
           const kindIsInclude = kind === "include";
+          const kindIsTrace = kind === "traceImage";
           const kindBase =
             kind === "question"
               ? "question"
@@ -911,6 +941,23 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
               const safeName = sanitizeFileNamePreserveSpaces(received.originalFilename || received.filename || "include.lib");
               const stableAbsPath = path.join(currentDir, safeName);
               await fs.move(received.filePath, stableAbsPath, { overwrite: true });
+              await fs.remove(uploadDir).catch(() => undefined);
+              sendJson(res, 200, {
+                ok: true,
+                path: toUserPath(stableAbsPath),
+                filename: path.basename(stableAbsPath),
+                mimeType: received.mimeType,
+                originalFilename: received.originalFilename,
+                kind,
+              });
+              return;
+            }
+            if (kindIsTrace) {
+              const currentDir = path.join(uploadRootDir, "current", "trace_images");
+              await fs.mkdirp(currentDir);
+              const safeName = sanitizeFileName(received.originalFilename || received.filename || "trace.png");
+              const stableAbsPath = await uniquePath(currentDir, safeName);
+              await fs.move(received.filePath, stableAbsPath, { overwrite: false });
               await fs.remove(uploadDir).catch(() => undefined);
               sendJson(res, 200, {
                 ok: true,
@@ -979,6 +1026,22 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
             return;
           }
 
+          if (kindIsTrace) {
+            const currentDir = path.join(uploadRootDir, "current", "trace_images");
+            await fs.mkdirp(currentDir);
+            const stableAbsPath = await uniquePath(currentDir, safe || "trace.png");
+            await fs.writeFile(stableAbsPath, body);
+            sendJson(res, 200, {
+              ok: true,
+              path: toUserPath(stableAbsPath),
+              filename: path.basename(stableAbsPath),
+              mimeType: contentType || "application/octet-stream",
+              originalFilename: requested,
+              kind,
+            });
+            return;
+          }
+
           if (kindBase) {
             const ext0 = String(path.extname(safe || "")).toLowerCase();
             const ext = ext0 && ext0.length <= 16 ? ext0 : "";
@@ -1011,6 +1074,19 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
         try {
           const u = new URL(req.url || "/api/upload/delete", `http://${String(req.headers.host ?? "localhost")}`);
           const kind = getSingleQueryParam(u, "kind");
+          if (kind === "traceImage") {
+            const traceDir = path.join(uploadRootDir, "current", "trace_images");
+            const ok = await fs.pathExists(traceDir);
+            if (!ok) {
+              sendJson(res, 200, { ok: true, deleted: 0, kind });
+              return;
+            }
+
+            const entries = await fs.readdir(traceDir).catch(() => [] as string[]);
+            await fs.remove(traceDir).catch(() => undefined);
+            sendJson(res, 200, { ok: true, deleted: entries.length, kind });
+            return;
+          }
           const kindBase =
             kind === "question"
               ? "question"
@@ -1161,6 +1237,13 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           questionPath: String(payload.questionPath ?? ""),
           baselineNetlistPath: payload.baselineNetlistPath ? String(payload.baselineNetlistPath) : undefined,
           baselineImagePath: payload.baselineImagePath ? String(payload.baselineImagePath) : undefined,
+          traceImagePaths: Array.isArray(payload.traceImagePaths)
+            ? payload.traceImagePaths.map((p: any) => String(p || "").trim()).filter((p: string) => p)
+            : (Array.isArray(payload.traceImageUploads)
+                ? payload.traceImageUploads
+                    .map((x: any) => String(x?.path || "").trim())
+                    .filter((p: string) => p)
+                : undefined),
           bundleIncludes: Boolean(payload.bundleIncludes),
           outdir: payload.outdir ? String(payload.outdir) : defaultOutdir,
           schematicDpi: Number.isFinite(schematicDpi) && (schematicDpi as number) > 0 ? (schematicDpi as number) : 600,

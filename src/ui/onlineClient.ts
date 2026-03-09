@@ -4,6 +4,10 @@ type UiDefaults = {
   questionPath?: string;
   baselineNetlistPath?: string;
   baselineImagePath?: string;
+  /** Optional oscilloscope trace image paths (usually uploaded snapshots). */
+  traceImagePaths?: string[];
+  /** Optional oscilloscope trace image uploads for import/export traceability. */
+  traceImageUploads?: Array<{ name: string; path: string }>;
   includeUploads?: Array<{ name: string; path: string }>;
   outdir?: string;
   schematicDpi?: number;
@@ -20,7 +24,7 @@ type UiInit = {
   defaults: UiDefaults;
 };
 
-type UploadKind = "question" | "baselineNetlist" | "baselineImage" | "include";
+type UploadKind = "question" | "baselineNetlist" | "baselineImage" | "traceImage" | "include";
 
 function byId<T extends HTMLElement = HTMLElement>(id: string): T | null {
   return document.getElementById(id) as T | null;
@@ -301,6 +305,8 @@ function getConfigFromUi() {
     questionPath: getEffectivePath("questionPath"),
     baselineNetlistPath: getEffectivePath("baselineNetlistPath"),
     baselineImagePath: getEffectivePath("baselineImagePath"),
+    traceImagePaths: traceImageUploads.map((x) => String(x?.path || "")).filter(Boolean),
+    traceImageUploads: traceImageUploads.map((x) => ({ name: String(x?.name || ""), path: String(x?.path || "") })).filter((x) => x.name || x.path),
     includeUploads: includeUploads.map((x) => ({ name: String(x?.name || ""), path: String(x?.path || "") })).filter((x) => x.name || x.path),
     outdir: String(byId<HTMLInputElement>("outdir")?.value ?? "").trim(),
     schematicDpi: Number.isFinite(dpi) && dpi > 0 ? dpi : 600,
@@ -322,6 +328,10 @@ function buildArgs(cfg: any, q: (v: unknown) => string) {
   if (cfg.questionPath) args.push("--question", q(cfg.questionPath));
   if (cfg.baselineNetlistPath) args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
   if (cfg.baselineImagePath) args.push("--baseline-image", q(cfg.baselineImagePath));
+  const tracePaths: string[] = Array.isArray(cfg.traceImagePaths)
+    ? cfg.traceImagePaths.map((p: any) => String(p || "").trim()).filter(Boolean)
+    : [];
+  for (const p of tracePaths) args.push("--trace-image", q(p));
   if (cfg.bundleIncludes) args.push("--bundle-includes");
   if (cfg.outdir) args.push("--outdir", q(cfg.outdir));
   args.push("--schematic-dpi", q(cfg.schematicDpi || 600));
@@ -342,6 +352,10 @@ function buildChatArgs(cfg: any, q: (v: unknown) => string) {
 
   if (cfg.baselineNetlistPath) args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
   if (cfg.baselineImagePath) args.push("--baseline-image", q(cfg.baselineImagePath));
+  const tracePaths: string[] = Array.isArray(cfg.traceImagePaths)
+    ? cfg.traceImagePaths.map((p: any) => String(p || "").trim()).filter(Boolean)
+    : [];
+  for (const p of tracePaths) args.push("--trace-image", q(p));
 
   if (enabled.includes("openai") && cfg.openaiModel) args.push("--openai-model", q(cfg.openaiModel));
   if (enabled.includes("xai") && cfg.grokModel) args.push("--grok-model", q(cfg.grokModel));
@@ -360,6 +374,9 @@ function updateCommandPreview() {
       String(cfg.questionPath || ""),
       String(cfg.baselineNetlistPath || ""),
       String(cfg.baselineImagePath || ""),
+      ...((Array.isArray((cfg as any).traceImagePaths) ? (cfg as any).traceImagePaths : [])
+        .map((p: any) => String(p || ""))
+        .filter(Boolean)),
       ...((Array.isArray((cfg as any).includeUploads) ? (cfg as any).includeUploads : [])
         .map((x: any) => String(x?.path || ""))
         .filter(Boolean)),
@@ -377,6 +394,7 @@ function updateCommandPreview() {
 }
 
 let includeUploads: Array<{ name: string; path: string }> = [];
+let traceImageUploads: Array<{ name: string; path: string }> = [];
 
 function isUploadSnapshotPath(p: unknown): boolean {
   const s = String(p || "").split("\\").join("/").toLowerCase();
@@ -419,6 +437,13 @@ async function warnConfigInputs(cfg: any, sourceLabel: string): Promise<void> {
     const s = String(p || "").trim();
     if (s) paths.push(s);
   }
+
+  const traces = Array.isArray(cfg?.traceImagePaths) ? cfg.traceImagePaths : [];
+  for (const p0 of traces) {
+    const s = String(p0 || "").trim();
+    if (s) paths.push(s);
+  }
+
   const inc = Array.isArray(cfg?.includeUploads) ? cfg.includeUploads : [];
   for (const it of inc) {
     const p = String(it?.path || "").trim();
@@ -452,6 +477,33 @@ function renderIncludeUploads() {
   if (list) list.textContent = names.length ? ("Includes: " + names.join(", ")) : "";
 }
 
+function renderTraceImageUploads() {
+  const names = traceImageUploads.map((x) => String(x?.name || "")).filter(Boolean);
+  const summary = byId<HTMLInputElement>("traceSummary");
+  if (summary) summary.value = names.length ? `${names.length} image(s) uploaded` : "";
+  const list = byId<HTMLDivElement>("traceFilesList");
+  if (list) list.textContent = names.length ? ("Traces: " + names.join(", ")) : "";
+}
+
+async function clearTraceImageUploads() {
+  const prevPaths = traceImageUploads.map((x) => String(x?.path || "")).filter(Boolean);
+  traceImageUploads = [];
+  const el = byId<HTMLInputElement>("traceFiles");
+  if (el) el.value = "";
+  renderTraceImageUploads();
+  updateCommandPreview();
+
+  // Best-effort delete uploaded snapshots (only if they were in the current upload area)
+  const anyCurrent = prevPaths.some((p) => isCurrentUploadPath(p));
+  if (!anyCurrent) return;
+  try {
+    await deleteCurrentUpload("traceImage");
+    setStatus("ok", "Cleared trace images and deleted uploaded snapshot folder.");
+  } catch (e: any) {
+    setStatus("warn", "Cleared trace images, but could not delete uploaded snapshots: " + String(e?.message || e));
+  }
+}
+
 function clearIncludeUploads() {
   includeUploads = [];
   const el = byId<HTMLInputElement>("includeFiles");
@@ -460,7 +512,7 @@ function clearIncludeUploads() {
   updateCommandPreview();
 }
 
-async function pickAndUpload(kind: Exclude<UploadKind, "include">) {
+async function pickAndUpload(kind: "question" | "baselineNetlist" | "baselineImage") {
   try {
     const fileId = kind === "question" ? "questionFile" : kind === "baselineNetlist" ? "baselineNetlistFile" : "baselineImageFile";
     const pathId = kind === "question" ? "questionPath" : kind === "baselineNetlist" ? "baselineNetlistPath" : "baselineImagePath";
@@ -502,6 +554,28 @@ async function pickAndUploadIncludes() {
     includeUploads = uploaded;
     renderIncludeUploads();
     setStatus("ok", `Uploaded ${uploaded.length} include file(s).`);
+    updateCommandPreview();
+  } catch (e: any) {
+    setStatus("err", String(e?.message || e));
+  }
+}
+
+async function pickAndUploadTraceImages() {
+  try {
+    const input = byId<HTMLInputElement>("traceFiles");
+    const files = input?.files ? Array.from(input.files) : [];
+    if (!files.length) return;
+
+    setStatus("hint", "Uploading trace images...");
+    const uploaded: Array<{ name: string; path: string }> = [];
+    for (const f of files) {
+      const saved = await uploadPickedFile(f, "traceImage");
+      uploaded.push({ name: f.name, path: saved.path });
+    }
+
+    traceImageUploads = uploaded;
+    renderTraceImageUploads();
+    setStatus("ok", `Uploaded ${uploaded.length} trace image(s).`);
     updateCommandPreview();
   } catch (e: any) {
     setStatus("err", String(e?.message || e));
@@ -553,6 +627,20 @@ function setConfig(cfg: UiDefaults) {
   setPathBox("baselineImagePath", basenameAny(biPath), biPath || undefined);
 
   // Includes are uploaded separately; import/export can remember them, but file inputs cannot be auto-populated.
+  // Same for trace images (multi-upload).
+  if (Array.isArray((cfg as any).traceImageUploads)) {
+    traceImageUploads = (cfg as any).traceImageUploads
+      .map((x: any) => ({ name: String(x?.name || ""), path: String(x?.path || "") }))
+      .filter((x: any) => x.name || x.path);
+  } else if (Array.isArray((cfg as any).traceImagePaths)) {
+    traceImageUploads = (cfg as any).traceImagePaths
+      .map((p: any) => ({ name: basenameAny(p), path: String(p || "") }))
+      .filter((x: any) => x.name || x.path);
+  } else {
+    traceImageUploads = [];
+  }
+  renderTraceImageUploads();
+
   if (Array.isArray((cfg as any).includeUploads)) {
     includeUploads = (cfg as any).includeUploads
       .map((x: any) => ({ name: String(x?.name || ""), path: String(x?.path || "") }))
@@ -814,16 +902,19 @@ function wireEvents(defaults: UiDefaults) {
   on("questionBrowseBtn", "click", () => { const el = byId<HTMLInputElement>("questionFile"); if (el) el.value = ""; });
   on("baselineNetlistBrowseBtn", "click", () => { const el = byId<HTMLInputElement>("baselineNetlistFile"); if (el) el.value = ""; });
   on("baselineImageBrowseBtn", "click", () => { const el = byId<HTMLInputElement>("baselineImageFile"); if (el) el.value = ""; });
+  on("traceBrowseBtn", "click", () => { const el = byId<HTMLInputElement>("traceFiles"); if (el) el.value = ""; });
   on("includeBrowseBtn", "click", () => { const el = byId<HTMLInputElement>("includeFiles"); if (el) el.value = ""; });
 
   on("questionFile", "change", () => void pickAndUpload("question"));
   on("baselineNetlistFile", "change", () => void pickAndUpload("baselineNetlist"));
   on("baselineImageFile", "change", () => void pickAndUpload("baselineImage"));
+  on("traceFiles", "change", () => void pickAndUploadTraceImages());
   on("includeFiles", "change", () => void pickAndUploadIncludes());
 
   on("questionClearBtn", "click", () => clearPicked("question"));
   on("baselineNetlistClearBtn", "click", () => clearPicked("baselineNetlist"));
   on("baselineImageClearBtn", "click", () => clearPicked("baselineImage"));
+  on("traceClearBtn", "click", () => void clearTraceImageUploads());
   on("includeClearBtn", "click", () => clearIncludeUploads());
 
   // Local save/load/export/import
@@ -903,6 +994,7 @@ function wireEvents(defaults: UiDefaults) {
     "questionPath",
     "baselineNetlistPath",
     "baselineImagePath",
+    "traceSummary",
     "outdir",
     "schematicDpi",
     "bundleIncludes",

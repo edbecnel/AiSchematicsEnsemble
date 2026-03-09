@@ -19,6 +19,18 @@ const RunConfigSchema = z
       })
       .strict()
       .optional(),
+    traceImagePaths: z.array(z.string()).optional(),
+    traceImages: z
+      .array(
+        z
+          .object({
+            mimeType: z.string(),
+            base64: z.string(),
+            filename: z.string().optional(),
+          })
+          .strict(),
+      )
+      .optional(),
     bundleIncludes: z.boolean().optional(),
     outdir: z.string().optional(),
     /** DPI to render schematic.png (Graphviz). Higher = larger PNG. */
@@ -64,6 +76,23 @@ export async function readRunConfig(configPath: string): Promise<RunConfig> {
         }
       : undefined;
 
+  const traceImagePaths = Array.isArray(cfg.traceImagePaths)
+    ? cfg.traceImagePaths.map((p) => cleanString(p)).filter((p): p is string => Boolean(p))
+    : undefined;
+
+  const traceImagesRaw = Array.isArray(cfg.traceImages) ? cfg.traceImages : undefined;
+  const traceImages = traceImagesRaw?.length
+    ? traceImagesRaw
+        .map((img) => {
+          const mt = cleanString((img as any)?.mimeType);
+          const b64 = cleanString((img as any)?.base64);
+          if (!mt || !b64) return undefined;
+          const fn = cleanString((img as any)?.filename);
+          return fn ? { mimeType: mt, base64: b64, filename: fn } : { mimeType: mt, base64: b64 };
+        })
+        .filter((x): x is { mimeType: string; base64: string; filename?: string } => Boolean(x))
+    : undefined;
+
   return {
     questionPath: cleanString(cfg.questionPath),
     questionText: cleanString(cfg.questionText),
@@ -73,6 +102,8 @@ export async function readRunConfig(configPath: string): Promise<RunConfig> {
     baselineNetlistFilename: cleanString(cfg.baselineNetlistFilename),
     baselineImagePath: cleanString(cfg.baselineImagePath),
     baselineImage,
+    traceImagePaths: traceImagePaths && traceImagePaths.length ? traceImagePaths : undefined,
+    traceImages: traceImages && traceImages.length ? (traceImages as any) : undefined,
     bundleIncludes: cfg.bundleIncludes,
     outdir: cleanString(cfg.outdir),
     schematicDpi: typeof cfg.schematicDpi === "number" && Number.isFinite(cfg.schematicDpi) ? cfg.schematicDpi : undefined,
@@ -88,6 +119,7 @@ export function mergeRunConfig(cli: {
   question?: unknown;
   baselineNetlist?: unknown;
   baselineImage?: unknown;
+  traceImage?: unknown;
   bundleIncludes?: unknown;
   outdir?: unknown;
   schematicDpi?: unknown;
@@ -109,6 +141,14 @@ export function mergeRunConfig(cli: {
 
   const bi = cleanString(cli.baselineImage);
   if (bi) merged.baselineImagePath = bi;
+
+  if (Array.isArray((cli as any).traceImage)) {
+    const t = (cli as any).traceImage.map((p: any) => cleanString(p)).filter(Boolean);
+    if (t.length) merged.traceImagePaths = t as string[];
+  } else {
+    const t1 = cleanString((cli as any).traceImage);
+    if (t1) merged.traceImagePaths = [t1];
+  }
 
   if (typeof cli.bundleIncludes === "boolean") merged.bundleIncludes = cli.bundleIncludes;
 

@@ -1,7 +1,7 @@
 import OpenAI from "openai";
 import type { InputImage, ModelAnswer } from "../types.js";
 
-export async function askGrok(prompt: string, model = "grok-4", _image?: InputImage): Promise<ModelAnswer> {
+export async function askGrok(prompt: string, model = "grok-4", _images?: InputImage[]): Promise<ModelAnswer> {
   try {
     const client = new OpenAI({
       apiKey: process.env.XAI_API_KEY,

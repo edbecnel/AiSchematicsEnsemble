@@ -65,15 +65,16 @@ async function askSingleProvider(args: {
   model: string;
   image?: InputImage;
 }): Promise<ModelAnswer> {
+  const images = args.image ? [args.image] : undefined;
   switch (args.provider) {
     case "openai":
-      return askOpenAI(args.prompt, args.model, args.image);
+      return askOpenAI(args.prompt, args.model, images);
     case "xai":
-      return askGrok(args.prompt, args.model, args.image);
+      return askGrok(args.prompt, args.model, images);
     case "google":
-      return askGemini(args.prompt, args.model, args.image);
+      return askGemini(args.prompt, args.model, images);
     case "anthropic":
-      return askClaude(args.prompt, args.model, 1200, args.image);
+      return askClaude(args.prompt, args.model, 1200, images);
   }
 }
 
@@ -155,6 +156,15 @@ program
   .option("--question <path>", "Markdown/text file with the question/prompt")
   .option("--baseline-netlist <path>", "Optional SPICE netlist representing current baseline circuit")
   .option("--baseline-image <path>", "Optional schematic screenshot image (png/jpg/webp)")
+  .option(
+    "--trace-image <path>",
+    "Optional oscilloscope trace image (png/jpg/webp). Repeat --trace-image to attach multiple.",
+    (v: string, acc: string[]) => {
+      acc.push(v);
+      return acc;
+    },
+    [] as string[],
+  )
   .option("--no-prompts", "Disable interactive prompts for missing baseline netlist/image")
   .option("--schematic-dpi <n>", "DPI for schematic.png (Graphviz). Example: 600")
   .option(
@@ -189,6 +199,8 @@ program
         baselineNetlistFilename: merged?.baselineNetlistFilename,
         baselineImagePath: merged?.baselineImagePath ?? opts.baselineImage,
         baselineImage: merged?.baselineImage,
+        traceImagePaths: (merged as any)?.traceImagePaths ?? (opts as any).traceImage,
+        traceImages: (merged as any)?.traceImages,
         bundleIncludes: merged?.bundleIncludes ?? Boolean(opts.bundleIncludes),
         outdir: merged?.outdir ?? opts.outdir,
         schematicDpi: merged?.schematicDpi,
@@ -573,11 +585,13 @@ program
       if (currentProvider === "ensemble") {
         console.log(chalk.cyan("Ensembling (fanout + Claude)..."));
 
+        const images = baselineImage ? [baselineImage] : undefined;
+
         const fanoutAnswers = await Promise.all<ModelAnswer>([
-          askOpenAI(prompt, models.openai, baselineImage),
-          askGrok(prompt, models.xai, baselineImage),
-          askGemini(prompt, models.google, baselineImage),
-          askClaude(prompt, models.anthropic, 1200, baselineImage),
+          askOpenAI(prompt, models.openai, images),
+          askGrok(prompt, models.xai, images),
+          askGemini(prompt, models.google, images),
+          askClaude(prompt, models.anthropic, 1200, images),
         ]);
 
         const ensemblePrompt = buildEnsemblePrompt({
@@ -589,7 +603,7 @@ program
           answers: fanoutAnswers,
         });
 
-        const ensemble = await askClaude(ensemblePrompt, models.ensemble, 4800, baselineImage);
+        const ensemble = await askClaude(ensemblePrompt, models.ensemble, 4800, images);
 
         if (opts.save) {
           const dir = await ensureRunDir();

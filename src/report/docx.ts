@@ -123,6 +123,7 @@ export async function writeReportDocx(args: {
   finalMarkdown: string;
   spiceNetlist: string;
   baselineSchematicPath?: string;
+  traceImagePaths?: string[];
   connectivitySchematicPngPath?: string;
   answers?: Array<{ heading: string; markdown: string }>;
 }): Promise<void> {
@@ -142,6 +143,23 @@ export async function writeReportDocx(args: {
     connectivitySection.push(
       new Paragraph("Connectivity schematic image not generated (Graphviz 'dot' not found or netlist parse failed)."),
     );
+  }
+
+  const traceSection: Paragraph[] = [];
+  const tracePaths = Array.isArray(args.traceImagePaths)
+    ? args.traceImagePaths.map((p) => String(p || "").trim()).filter(Boolean)
+    : [];
+  if (tracePaths.length) {
+    traceSection.push(new Paragraph({ text: "Oscilloscope Trace Images", heading: HeadingLevel.HEADING_1 }));
+    for (const p of tracePaths) {
+      const name = p.split(/[\\/]+/g).filter(Boolean).slice(-1)[0] || p;
+      traceSection.push(new Paragraph({ text: name, heading: HeadingLevel.HEADING_2 }));
+      if (await fs.pathExists(p)) {
+        traceSection.push(await imageParagraph(p, 720, 480, { fitMode: "auto" }));
+      } else {
+        traceSection.push(new Paragraph(`Trace image not found: ${p}`));
+      }
+    }
   }
 
   const answersSection: Paragraph[] = [];
@@ -168,6 +186,7 @@ export async function writeReportDocx(args: {
         children: [
           new Paragraph({ text: args.title, heading: HeadingLevel.TITLE }),
           ...baselineSection,
+          ...traceSection,
           new Paragraph({ text: "Question", heading: HeadingLevel.HEADING_1 }),
           new Paragraph(args.question),
           new Paragraph({ text: "Ensembled Output (Markdown)", heading: HeadingLevel.HEADING_1 }),

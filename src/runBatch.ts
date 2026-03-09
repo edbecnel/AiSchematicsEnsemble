@@ -29,6 +29,10 @@ export type RunBatchOptions = {
   baselineNetlistFilename?: string;
   baselineImagePath?: string;
   baselineImage?: InputImage;
+  /** Optional oscilloscope trace images (paths) to attach as additional context. */
+  traceImagePaths?: string[];
+  /** Optional oscilloscope trace images (embedded base64), for programmatic callers. */
+  traceImages?: InputImage[];
   bundleIncludes?: boolean;
   outdir?: string;
   /** DPI for schematic.png rendering (Graphviz). */
@@ -57,6 +61,7 @@ export type RunBatchResult = {
     baselineOriginalCir?: string;
     baselineIncludesJson?: string;
     baselineImage?: string;
+    traceImages?: string[];
     answersJson: string;
   };
 };
@@ -141,6 +146,32 @@ async function resolveBaselineImage(pathMaybe?: string, allowPrompts = true): Pr
   return maybePromptForBaselineImage(pathMaybe);
 }
 
+function normalizePathList(v: unknown): string[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((x) => String(x ?? "").trim()).filter(Boolean);
+}
+
+function sanitizeStem(name: string): string {
+  const base = String(name || "").trim();
+  const safe = base.replace(/[^a-zA-Z0-9._-]/g, "_");
+  return safe || "image";
+}
+
+async function uniqueDestPath(dir: string, filename: string): Promise<string> {
+  const base = path.basename(filename || "file");
+  const ext = path.extname(base);
+  const stem = base.slice(0, base.length - ext.length) || "file";
+
+  let candidate = path.join(dir, base);
+  if (!(await fs.pathExists(candidate))) return candidate;
+  for (let i = 2; i <= 2000; i++) {
+    candidate = path.join(dir, `${stem}_${i}${ext}`);
+    if (!(await fs.pathExists(candidate))) return candidate;
+  }
+  const rand = Math.random().toString(16).slice(2, 10);
+  return path.join(dir, `${stem}_${rand}${ext}`);
+}
+
 function defaultLogger(): RunBatchLogger {
   return {
     info: (m) => console.log(m),
@@ -196,18 +227,18 @@ async function askProvider(args: {
   provider: ProviderName;
   prompt: string;
   model: string;
-  image?: InputImage;
+  images?: InputImage[];
   maxTokens?: number;
 }): Promise<ModelAnswer> {
   switch (args.provider) {
     case "openai":
-      return askOpenAI(args.prompt, args.model, args.image);
+      return askOpenAI(args.prompt, args.model, args.images);
     case "xai":
-      return askGrok(args.prompt, args.model, args.image);
+      return askGrok(args.prompt, args.model, args.images);
     case "google":
-      return askGemini(args.prompt, args.model, args.image);
+      return askGemini(args.prompt, args.model, args.images);
     case "anthropic":
-      return askClaude(args.prompt, args.model, args.maxTokens ?? 1800, args.image);
+      return askClaude(args.prompt, args.model, args.maxTokens ?? 1800, args.images);
   }
 }
 
@@ -323,13 +354,61 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     await fs.copy(baselineImagePath, baselineImageSavedPath);
   }
 
+  // Trace images (oscilloscope screenshots)
+  const traceImagesFromOpts = Array.isArray(opts.traceImages) ? opts.traceImages.filter(Boolean) : [];
+  const traceImagePaths = traceImagesFromOpts.length ? [] : normalizePathList(opts.traceImagePaths);
+
+  const traceImages: InputImage[] = [];
+  const traceImageSavedPaths: string[] = [];
+  const traceImageFilenames: string[] = [];
+
+  if (traceImagesFromOpts.length) {
+    const traceDir = path.join(runDir, "trace_images");
+    await fs.mkdirp(traceDir);
+    for (let i = 0; i < traceImagesFromOpts.length; i++) {
+      const img = traceImagesFromOpts[i];
+      if (!img?.mimeType || !img?.base64) continue;
+      const baseName = sanitizeStem(img.filename || `trace_${String(i + 1).padStart(2, "0")}`);
+      const ext = extFromMimeType(img.mimeType);
+      const dest = await uniqueDestPath(traceDir, `${baseName}${ext}`);
+      await fs.writeFile(dest, Buffer.from(img.base64, "base64"));
+      traceImages.push(img);
+      traceImageSavedPaths.push(dest);
+      traceImageFilenames.push(path.basename(dest));
+    }
+  }
+
+  if (traceImagePaths.length) {
+    const traceDir = path.join(runDir, "trace_images");
+    await fs.mkdirp(traceDir);
+    for (let i = 0; i < traceImagePaths.length; i++) {
+      const p = traceImagePaths[i];
+      if (!p) continue;
+      const img = await loadImageAsBase64(p);
+      traceImages.push(img);
+
+      const ext = path.extname(p) || extFromMimeType(img.mimeType);
+      const baseName = sanitizeStem(path.basename(p, path.extname(p)) || `trace_${String(i + 1).padStart(2, "0")}`);
+      const dest = await uniqueDestPath(traceDir, `${baseName}${ext}`);
+      await fs.copy(p, dest);
+      traceImageSavedPaths.push(dest);
+      traceImageFilenames.push(path.basename(dest));
+    }
+  }
+
+  const allImages: InputImage[] = [
+    ...(baselineImage ? [baselineImage] : []),
+    ...traceImages,
+  ];
+
   // Fanout prompt
   const fanoutPrompt =
     question.trim() +
     (baselineNetlist
       ? `\n\nBASELINE NETLIST (current topology):\n\n\`\`\`spice\n${baselineNetlist.trim()}\n\`\`\`\n`
       : "") +
-    (baselineImageFilename ? "\n\nNOTE: A schematic screenshot image is provided as context.\n" : "");
+    (baselineImageFilename ? "\n\nNOTE: A schematic screenshot image is provided as context.\n" : "") +
+    (traceImageFilenames.length ? `\n\nNOTE: ${traceImageFilenames.length} oscilloscope trace image(s) are provided as context.\n` : "");
 
   // Fanout
   logger.info("Querying models...");
@@ -343,7 +422,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
   const fanoutJobs = enabledProviders.map((provider) => {
     const model = modelForProvider(provider, opts);
     const maxTokens = provider === "anthropic" ? 1200 : undefined;
-    return askProvider({ provider, prompt: fanoutPrompt, model, image: baselineImage, maxTokens });
+    return askProvider({ provider, prompt: fanoutPrompt, model, images: allImages, maxTokens });
   });
   const answers = await Promise.all<ModelAnswer>(fanoutJobs);
 
@@ -370,6 +449,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     question,
     baselineNetlist,
     baselineImageFilename: baselineImageFilename ? path.basename(baselineImageSavedPath ?? baselineImageFilename) : undefined,
+    traceImageFilenames,
     answers,
   });
 
@@ -378,7 +458,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     provider: ensembleProvider,
     prompt: ensemblePrompt,
     model: ensembleModel,
-    image: baselineImage,
+    images: allImages,
     maxTokens: ensembleMaxTokens,
   });
   await writeText(path.join(runDir, "ensemble_raw.txt"), ensemble.text || ensemble.error || "");
@@ -570,6 +650,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
       baselineOriginalCir,
       baselineIncludesJson,
       baselineImage: baselineImageSavedPath,
+      traceImages: traceImageSavedPaths.length ? traceImageSavedPaths : undefined,
       answersJson,
     },
   };

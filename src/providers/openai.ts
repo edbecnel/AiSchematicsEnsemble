@@ -2,21 +2,23 @@ import OpenAI from "openai";
 import type { ResponseInput } from "openai/resources/responses/responses";
 import type { InputImage, ModelAnswer } from "../types.js";
 
-export async function askOpenAI(prompt: string, model = "gpt-5.2", image?: InputImage): Promise<ModelAnswer> {
+export async function askOpenAI(prompt: string, model = "gpt-5.2", images?: InputImage[]): Promise<ModelAnswer> {
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-    const input = image
+    const imgs = Array.isArray(images) ? images.filter(Boolean) : [];
+
+    const input = imgs.length
       ? ([
           {
             role: "user" as const,
             content: [
               { type: "input_text" as const, text: prompt },
-              {
+              ...imgs.map((img) => ({
                 type: "input_image" as const,
-                image_url: `data:${image.mimeType};base64,${image.base64}`,
+                image_url: `data:${img.mimeType};base64,${img.base64}`,
                 detail: "auto" as const,
-              },
+              })),
             ],
           },
         ] satisfies ResponseInput)
