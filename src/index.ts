@@ -35,6 +35,31 @@ type ChatTurn = {
   ts: string;
 };
 
+function sanitizeTag(v: unknown): string {
+  const raw = String(v ?? "").trim();
+  const cleaned = raw.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
+  return cleaned || "ref";
+}
+
+function defaultTagFromPath(p: unknown): string {
+  const s = String(p ?? "").trim();
+  const base = path.basename(s);
+  const stem = base.replace(/\.[^./\\]+$/g, "");
+  return sanitizeTag(stem || base || "ref");
+}
+
+function parseRefImageSpec(spec: unknown): { tag: string; path: string } | undefined {
+  const s = String(spec ?? "").trim();
+  if (!s) return undefined;
+  const eq = s.indexOf("=");
+  if (eq > 0) {
+    const tagRaw = s.slice(0, eq);
+    const pathRaw = s.slice(eq + 1).trim();
+    if (pathRaw) return { tag: sanitizeTag(tagRaw), path: pathRaw };
+  }
+  return { tag: defaultTagFromPath(s), path: s };
+}
+
 function formatChatPrompt(args: {
   systemPreamble: string;
   baselineNetlist?: string;
@@ -157,8 +182,17 @@ program
   .option("--baseline-netlist <path>", "Optional SPICE netlist representing current baseline circuit")
   .option("--baseline-image <path>", "Optional schematic screenshot image (png/jpg/webp)")
   .option(
+    "--ref-image <spec>",
+    "Optional reference image. Use either a path, or tag=path. Repeat --ref-image to attach multiple.",
+    (v: string, acc: string[]) => {
+      acc.push(v);
+      return acc;
+    },
+    [] as string[],
+  )
+  .option(
     "--trace-image <path>",
-    "Optional oscilloscope trace image (png/jpg/webp). Repeat --trace-image to attach multiple.",
+    "(Deprecated) Optional oscilloscope trace image (png/jpg/webp). Prefer --ref-image. Repeat --trace-image to attach multiple.",
     (v: string, acc: string[]) => {
       acc.push(v);
       return acc;
@@ -190,6 +224,21 @@ program
         return;
       }
 
+      const refFromCli = Array.isArray((opts as any).refImage)
+        ? ((opts as any).refImage as any[]).map(parseRefImageSpec).filter(Boolean)
+        : (opts as any).refImage
+          ? [parseRefImageSpec((opts as any).refImage)].filter(Boolean)
+          : [];
+      const traceFromCli = Array.isArray((opts as any).traceImage)
+        ? ((opts as any).traceImage as any[]).map((p: any) => ({ tag: defaultTagFromPath(p), path: String(p || "").trim() }))
+        : (opts as any).traceImage
+          ? [{ tag: defaultTagFromPath((opts as any).traceImage), path: String((opts as any).traceImage).trim() }]
+          : [];
+
+      const referenceImagePaths = (merged as any)?.referenceImagePaths?.length
+        ? ((merged as any).referenceImagePaths as any[])
+        : [...refFromCli, ...traceFromCli].filter((x) => x && x.path);
+
       const result = await runBatch({
         questionPath,
         questionText,
@@ -199,6 +248,9 @@ program
         baselineNetlistFilename: merged?.baselineNetlistFilename,
         baselineImagePath: merged?.baselineImagePath ?? opts.baselineImage,
         baselineImage: merged?.baselineImage,
+        referenceImagePaths: referenceImagePaths.length ? (referenceImagePaths as any) : undefined,
+        referenceImages: (merged as any)?.referenceImages,
+        // Backward-compatible legacy support
         traceImagePaths: (merged as any)?.traceImagePaths ?? (opts as any).traceImage,
         traceImages: (merged as any)?.traceImages,
         bundleIncludes: merged?.bundleIncludes ?? Boolean(opts.bundleIncludes),

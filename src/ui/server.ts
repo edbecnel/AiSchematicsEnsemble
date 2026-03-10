@@ -537,7 +537,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
         </div>
 
         <div class="row">
-          <label>Oscilloscope traces</label>
+          <label>Reference images</label>
           <div>
             <div style="display:flex; gap:8px; align-items:center;">
               <input id="traceSummary" type="text" value="" placeholder="(optional)" readonly class="subduedPath" />
@@ -545,7 +545,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
               <button type="button" id="traceClearBtn" title="Clear" style="padding: 8px 10px;">✕</button>
               <input id="traceFiles" type="file" multiple accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" style="position:absolute; left:-10000px; width:1px; height:1px; opacity:0" />
             </div>
-            <div class="hint">Upload one or more oscilloscope trace screenshots for the models to interpret.</div>
+            <div class="hint">Upload one or more reference images (schematics, waveforms, datasheet figures). Default tag is the filename stem.</div>
             <div class="hint" id="traceFilesList"></div>
           </div>
         </div>
@@ -909,7 +909,7 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           const u = new URL(req.url || "/api/upload", `http://${String(req.headers.host ?? "localhost")}`);
           const kind = getSingleQueryParam(u, "kind");
           const kindIsInclude = kind === "include";
-          const kindIsTrace = kind === "traceImage";
+          const kindIsRefImage = kind === "refImage" || kind === "traceImage";
           const kindBase =
             kind === "question"
               ? "question"
@@ -952,8 +952,8 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
               });
               return;
             }
-            if (kindIsTrace) {
-              const currentDir = path.join(uploadRootDir, "current", "trace_images");
+            if (kindIsRefImage) {
+              const currentDir = path.join(uploadRootDir, "current", "reference_images");
               await fs.mkdirp(currentDir);
               const safeName = sanitizeFileName(received.originalFilename || received.filename || "trace.png");
               const stableAbsPath = await uniquePath(currentDir, safeName);
@@ -1026,8 +1026,8 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
             return;
           }
 
-          if (kindIsTrace) {
-            const currentDir = path.join(uploadRootDir, "current", "trace_images");
+          if (kindIsRefImage) {
+            const currentDir = path.join(uploadRootDir, "current", "reference_images");
             await fs.mkdirp(currentDir);
             const stableAbsPath = await uniquePath(currentDir, safe || "trace.png");
             await fs.writeFile(stableAbsPath, body);
@@ -1074,17 +1074,25 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
         try {
           const u = new URL(req.url || "/api/upload/delete", `http://${String(req.headers.host ?? "localhost")}`);
           const kind = getSingleQueryParam(u, "kind");
-          if (kind === "traceImage") {
-            const traceDir = path.join(uploadRootDir, "current", "trace_images");
-            const ok = await fs.pathExists(traceDir);
-            if (!ok) {
-              sendJson(res, 200, { ok: true, deleted: 0, kind });
-              return;
-            }
+          if (kind === "traceImage" || kind === "refImage") {
+            // Current location (preferred)
+            const primaryDir = path.join(uploadRootDir, "current", "reference_images");
+            // Back-compat locations from older builds
+            const legacyDirs = [
+              path.join(uploadRootDir, "current", "ref_images"),
+              path.join(uploadRootDir, "current", "trace_images"),
+            ];
 
-            const entries = await fs.readdir(traceDir).catch(() => [] as string[]);
-            await fs.remove(traceDir).catch(() => undefined);
-            sendJson(res, 200, { ok: true, deleted: entries.length, kind });
+            const dirs = [primaryDir, ...legacyDirs];
+            let deleted = 0;
+            for (const dir of dirs) {
+              const ok = await fs.pathExists(dir);
+              if (!ok) continue;
+              const entries = await fs.readdir(dir).catch(() => [] as string[]);
+              deleted += entries.length;
+              await fs.remove(dir).catch(() => undefined);
+            }
+            sendJson(res, 200, { ok: true, deleted, kind });
             return;
           }
           const kindBase =
@@ -1237,6 +1245,19 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
           questionPath: String(payload.questionPath ?? ""),
           baselineNetlistPath: payload.baselineNetlistPath ? String(payload.baselineNetlistPath) : undefined,
           baselineImagePath: payload.baselineImagePath ? String(payload.baselineImagePath) : undefined,
+          referenceImagePaths: Array.isArray(payload.referenceImagePaths)
+            ? payload.referenceImagePaths
+                .map((x: any) => ({
+                  tag: String(x?.tag || "").trim(),
+                  path: String(x?.path || "").trim(),
+                }))
+                .filter((x: any) => x.tag && x.path)
+            : (Array.isArray(payload.referenceImageUploads)
+                ? payload.referenceImageUploads
+                    .map((x: any) => ({ tag: String(x?.tag || "").trim(), path: String(x?.path || "").trim() }))
+                    .filter((x: any) => x.tag && x.path)
+                : undefined),
+          // Backward-compatible legacy fields
           traceImagePaths: Array.isArray(payload.traceImagePaths)
             ? payload.traceImagePaths.map((p: any) => String(p || "").trim()).filter((p: string) => p)
             : (Array.isArray(payload.traceImageUploads)

@@ -123,7 +123,7 @@ export async function writeReportDocx(args: {
   finalMarkdown: string;
   spiceNetlist: string;
   baselineSchematicPath?: string;
-  traceImagePaths?: string[];
+  referenceImages?: Array<{ tag: string; path: string }>;
   connectivitySchematicPngPath?: string;
   answers?: Array<{ heading: string; markdown: string }>;
 }): Promise<void> {
@@ -145,19 +145,20 @@ export async function writeReportDocx(args: {
     );
   }
 
-  const traceSection: Paragraph[] = [];
-  const tracePaths = Array.isArray(args.traceImagePaths)
-    ? args.traceImagePaths.map((p) => String(p || "").trim()).filter(Boolean)
-    : [];
-  if (tracePaths.length) {
-    traceSection.push(new Paragraph({ text: "Oscilloscope Trace Images", heading: HeadingLevel.HEADING_1 }));
-    for (const p of tracePaths) {
-      const name = p.split(/[\\/]+/g).filter(Boolean).slice(-1)[0] || p;
-      traceSection.push(new Paragraph({ text: name, heading: HeadingLevel.HEADING_2 }));
-      if (await fs.pathExists(p)) {
-        traceSection.push(await imageParagraph(p, 720, 480, { fitMode: "auto" }));
+  const referenceSection: Paragraph[] = [];
+  const refs = Array.isArray(args.referenceImages) ? args.referenceImages : [];
+  const refItems = refs
+    .map((x) => ({ tag: String((x as any)?.tag || "").trim(), path: String((x as any)?.path || "").trim() }))
+    .filter((x) => x.tag && x.path);
+  if (refItems.length) {
+    referenceSection.push(new Paragraph({ text: "Reference Images", heading: HeadingLevel.HEADING_1 }));
+    for (const it of refItems) {
+      const base = it.path.split(/[\\/]+/g).filter(Boolean).slice(-1)[0] || it.path;
+      referenceSection.push(new Paragraph({ text: `${it.tag} — ${base}`, heading: HeadingLevel.HEADING_2 }));
+      if (await fs.pathExists(it.path)) {
+        referenceSection.push(await imageParagraph(it.path, 720, 480, { fitMode: "auto" }));
       } else {
-        traceSection.push(new Paragraph(`Trace image not found: ${p}`));
+        referenceSection.push(new Paragraph(`Reference image not found: ${it.path}`));
       }
     }
   }
@@ -186,7 +187,7 @@ export async function writeReportDocx(args: {
         children: [
           new Paragraph({ text: args.title, heading: HeadingLevel.TITLE }),
           ...baselineSection,
-          ...traceSection,
+          ...referenceSection,
           new Paragraph({ text: "Question", heading: HeadingLevel.HEADING_1 }),
           new Paragraph(args.question),
           new Paragraph({ text: "Ensembled Output (Markdown)", heading: HeadingLevel.HEADING_1 }),

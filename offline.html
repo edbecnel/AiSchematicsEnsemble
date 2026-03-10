@@ -497,7 +497,7 @@
             </div>
           </div>
           <div class="row">
-            <label>Oscilloscope traces</label>
+            <label>Reference images</label>
             <div>
               <div style="display: flex; gap: 8px; align-items: center">
                 <input
@@ -537,8 +537,8 @@
                 />
               </div>
               <div class="hint">
-                Provide one or more screenshots of oscilloscope traces to use as
-                measurement evidence.
+                Upload one or more reference images (schematics, waveforms,
+                datasheet figures). Default tag is the filename stem.
               </div>
               <div class="hint" id="traceImagesList"></div>
               <div class="hint" id="traceImagesPickedHint"></div>
@@ -1082,6 +1082,46 @@
         return t ? t : "";
       }
 
+      function sanitizeTag(raw) {
+        const s = String(raw ?? "").trim();
+        if (!s) return "";
+        const cleaned = s
+          .replace(/\s+/g, "_")
+          .replace(/[^a-zA-Z0-9_.-]/g, "_")
+          .replace(/^_+|_+$/g, "");
+        return cleaned.slice(0, 64);
+      }
+
+      function basenameAny(p) {
+        const s = String(p ?? "");
+        const parts = s.split(/[\\/]+/g).filter(Boolean);
+        return parts.length ? parts[parts.length - 1] : s;
+      }
+
+      function defaultTagFromName(name) {
+        const base = basenameAny(name);
+        const stem = base.replace(/\.[^.]+$/, "");
+        return sanitizeTag(stem) || "img";
+      }
+
+      function makeUniqueTag(desired, used) {
+        const base = desired || "img";
+        if (!used.has(base)) {
+          used.add(base);
+          return base;
+        }
+        for (let i = 2; i < 1000; i++) {
+          const cand = `${base}_${i}`;
+          if (!used.has(cand)) {
+            used.add(cand);
+            return cand;
+          }
+        }
+        const fallback = `${base}_${Date.now()}`;
+        used.add(fallback);
+        return fallback;
+      }
+
       const embedded = {
         question: { text: "", filename: "" },
         baselineNetlist: { text: "", filename: "" },
@@ -1094,18 +1134,101 @@
       let traceImageUploads = [];
 
       function renderTraceImageUploads() {
-        const names = Array.isArray(traceImageUploads)
-          ? traceImageUploads
-              .map((x) => String((x && x.name) || "").trim())
-              .filter(Boolean)
-          : [];
+        const listEl = els.traceImagesList;
+        if (!listEl) return;
+
+        // normalize tags + enforce uniqueness
+        const used = new Set();
+        traceImageUploads = (
+          Array.isArray(traceImageUploads) ? traceImageUploads : []
+        ).map((x) => {
+          const name = String((x && x.name) || "");
+          const path = String((x && x.path) || "");
+          const tag0 =
+            sanitizeTag((x && x.tag) || "") || defaultTagFromName(name || path);
+          const tag = makeUniqueTag(tag0, used);
+          return { ...x, tag, name, path };
+        });
+
+        const tags = traceImageUploads
+          .map((x) => String((x && x.tag) || "").trim())
+          .filter(Boolean);
         if (els.traceImagesSummary) {
-          els.traceImagesSummary.value = names.length ? names.join(", ") : "";
-        }
-        if (els.traceImagesList) {
-          els.traceImagesList.textContent = names.length
-            ? names.map((n) => `- ${n}`).join("\n")
+          els.traceImagesSummary.value = tags.length
+            ? `${tags.length} image(s)`
             : "";
+        }
+
+        listEl.innerHTML = "";
+        if (!traceImageUploads.length) return;
+
+        for (let i = 0; i < traceImageUploads.length; i++) {
+          const it = traceImageUploads[i];
+
+          const row = document.createElement("div");
+          row.style.display = "flex";
+          row.style.gap = "8px";
+          row.style.alignItems = "center";
+          row.style.marginTop = "6px";
+
+          const tagInput = document.createElement("input");
+          tagInput.type = "text";
+          tagInput.value = String(it.tag || "");
+          tagInput.placeholder = "tag";
+          tagInput.style.padding = "6px 8px";
+          tagInput.style.borderRadius = "8px";
+          tagInput.style.border = "1px solid rgba(127,127,127,.4)";
+          tagInput.style.background = "rgba(127,127,127,.06)";
+          tagInput.style.color = "inherit";
+          tagInput.style.width = "160px";
+
+          tagInput.addEventListener("blur", () => {
+            const raw = String(tagInput.value || "");
+            let next = sanitizeTag(raw);
+            if (!next) next = defaultTagFromName(it.name || it.path);
+
+            const used2 = new Set();
+            traceImageUploads = traceImageUploads.map((x, idx) => {
+              const desired =
+                idx === i
+                  ? next
+                  : sanitizeTag((x && x.tag) || "") ||
+                    defaultTagFromName((x && (x.name || x.path)) || "");
+              const unique = makeUniqueTag(desired, used2);
+              return { ...x, tag: unique };
+            });
+            tagInput.value = traceImageUploads[i].tag;
+            // keep embedded in sync when embedded images exist
+            try {
+              if (
+                Array.isArray(embedded.traceImages) &&
+                embedded.traceImages.length
+              ) {
+                embedded.traceImages = embedded.traceImages.map((x, idx) =>
+                  idx === i ? { ...x, tag: traceImageUploads[i].tag } : x,
+                );
+              }
+            } catch {
+              // ignore
+            }
+            updatePreview();
+          });
+
+          tagInput.addEventListener("input", () => {
+            traceImageUploads[i] = {
+              ...traceImageUploads[i],
+              tag: String(tagInput.value || ""),
+            };
+            updatePreview();
+          });
+
+          const nameEl = document.createElement("span");
+          nameEl.textContent = basenameAny(it.name || it.path);
+          nameEl.className = "mono";
+
+          row.appendChild(tagInput);
+          row.appendChild(nameEl);
+          listEl.appendChild(row);
         }
       }
 
@@ -1129,8 +1252,13 @@
             .then((ok) => {
               if (!ok) return;
               const u = new URL("/api/upload/delete", location.href);
-              u.searchParams.set("kind", "traceImage");
-              return fetch(String(u), { method: "POST" });
+              u.searchParams.set("kind", "refImage");
+              return fetch(String(u), { method: "POST" }).catch(() => {
+                // Back-compat with older servers
+                const u2 = new URL("/api/upload/delete", location.href);
+                u2.searchParams.set("kind", "traceImage");
+                return fetch(String(u2), { method: "POST" });
+              });
             })
             .catch(() => {
               // ignore
@@ -1285,19 +1413,27 @@
         const traceImagesEmbeddedRaw = Array.isArray(embedded.traceImages)
           ? embedded.traceImages
           : [];
-        const traceImagesEmbedded = traceImagesEmbeddedRaw
+        const referenceImagesEmbedded = traceImagesEmbeddedRaw
           .map((x) => ({
+            tag:
+              sanitizeTag((x && x.tag) || "") ||
+              defaultTagFromName((x && x.filename) || ""),
             base64: String((x && x.base64) || ""),
             mimeType: String((x && x.mimeType) || ""),
             filename: String((x && x.filename) || ""),
           }))
-          .filter((x) => x.base64 && x.mimeType);
-        const traceImagePaths = traceImagesEmbedded.length
+          .filter((x) => x.tag && x.base64 && x.mimeType);
+        const referenceImagePaths = referenceImagesEmbedded.length
           ? []
           : Array.isArray(traceImageUploads)
             ? traceImageUploads
-                .map((x) => String((x && x.path) || "").trim())
-                .filter(Boolean)
+                .map((x) => ({
+                  tag:
+                    sanitizeTag((x && x.tag) || "") ||
+                    defaultTagFromName((x && (x.name || x.path)) || ""),
+                  path: String((x && x.path) || "").trim(),
+                }))
+                .filter((x) => x.tag && x.path)
             : [];
 
         const dpiRaw = clean(els.schematicDpi.value);
@@ -1337,9 +1473,12 @@
                   filename: embedded.baselineImage.filename || undefined,
                 }
               : undefined,
-          traceImagePaths: traceImagePaths.length ? traceImagePaths : undefined,
-          traceImages: traceImagesEmbedded.length
-            ? traceImagesEmbedded.map((x) => ({
+          referenceImagePaths: referenceImagePaths.length
+            ? referenceImagePaths
+            : undefined,
+          referenceImages: referenceImagesEmbedded.length
+            ? referenceImagesEmbedded.map((x) => ({
+                tag: x.tag,
                 mimeType: x.mimeType,
                 base64: x.base64,
                 filename: x.filename || undefined,
@@ -1777,6 +1916,7 @@
 
         // Immediately reflect selection in the UI.
         traceImageUploads = files.map((f) => ({
+          tag: defaultTagFromName(f.name || ""),
           name: f.name || "trace",
           path: "",
         }));
@@ -1786,11 +1926,24 @@
         const canUpload = await hasUploadApi();
         if (canUpload) {
           clearEmbedded("traceImages");
-          setStatus("hint", `Uploading ${files.length} trace image(s)...`);
-          Promise.all(files.map((f) => uploadToServer(f, "traceImage")))
+          setStatus("hint", `Uploading ${files.length} reference image(s)...`);
+          Promise.all(
+            files.map((f) =>
+              uploadToServer(f, "refImage").catch(() =>
+                uploadToServer(f, "traceImage"),
+              ),
+            ),
+          )
             .then((saved) => {
               const uploaded = saved
                 .map((s, i) => ({
+                  tag: defaultTagFromName(
+                    String(
+                      (s && (s.filename || s.originalFilename)) ||
+                        (files[i] && files[i].name) ||
+                        "trace",
+                    ),
+                  ),
                   name: String(
                     (s && (s.filename || s.originalFilename)) ||
                       (files[i] && files[i].name) ||
@@ -1803,7 +1956,7 @@
               renderTraceImageUploads();
               setPickedHint(
                 hintEl,
-                `Picked ${uploaded.length} trace image(s) (uploaded).`,
+                `Picked ${uploaded.length} reference image(s) (uploaded).`,
               );
               setStatus("ok", "Uploaded. (Snapshot — re-upload after edits.)");
               updatePreview();
@@ -1813,10 +1966,21 @@
               try {
                 setStatus("hint", "Upload failed; retrying raw upload...");
                 const saved2 = await Promise.all(
-                  files.map((f) => uploadToServerRaw(f, "traceImage")),
+                  files.map((f) =>
+                    uploadToServerRaw(f, "refImage").catch(() =>
+                      uploadToServerRaw(f, "traceImage"),
+                    ),
+                  ),
                 );
                 const uploaded2 = saved2
                   .map((s, i) => ({
+                    tag: defaultTagFromName(
+                      String(
+                        (s && (s.filename || s.originalFilename)) ||
+                          (files[i] && files[i].name) ||
+                          "trace",
+                      ),
+                    ),
                     name: String(
                       (s && (s.filename || s.originalFilename)) ||
                         (files[i] && files[i].name) ||
@@ -1829,7 +1993,7 @@
                 renderTraceImageUploads();
                 setPickedHint(
                   hintEl,
-                  `Picked ${uploaded2.length} trace image(s) (uploaded).`,
+                  `Picked ${uploaded2.length} reference image(s) (uploaded).`,
                 );
                 setStatus(
                   "ok",
@@ -1847,13 +2011,14 @@
               // Final fallback to filename-only
               const baseDir = getBaseInputDir();
               traceImageUploads = files.map((f) => ({
+                tag: defaultTagFromName(f.name || ""),
                 name: f.name || "trace",
                 path: joinBaseDirAndName(baseDir, f.name) || f.name,
               }));
               renderTraceImageUploads();
               setPickedHint(
                 hintEl,
-                `Picked ${traceImageUploads.length} trace image(s) (filename only).`,
+                `Picked ${traceImageUploads.length} reference image(s) (filename only).`,
               );
               updatePreview();
             });
@@ -1871,13 +2036,14 @@
             if (reachable.every(Boolean)) {
               clearEmbedded("traceImages");
               traceImageUploads = files.map((f) => ({
+                tag: defaultTagFromName(f.name || ""),
                 name: f.name || "trace",
                 path: f.name,
               }));
               renderTraceImageUploads();
               setPickedHint(
                 hintEl,
-                `Picked ${files.length} trace image(s) (using filename only).`,
+                `Picked ${files.length} reference image(s) (using filename only).`,
               );
               setStatus(
                 "ok",
@@ -1892,13 +2058,14 @@
           if (els.preferFilenameOnly && els.preferFilenameOnly.checked) {
             clearEmbedded("traceImages");
             traceImageUploads = files.map((f) => ({
+              tag: defaultTagFromName(f.name || ""),
               name: f.name || "trace",
               path: joinBaseDirAndName(baseDir, f.name) || f.name,
             }));
             renderTraceImageUploads();
             setPickedHint(
               hintEl,
-              `Picked ${files.length} trace image(s) (filename only — not embedded).`,
+              `Picked ${files.length} reference image(s) (filename only — not embedded).`,
             );
             setStatus(
               "warn",
@@ -1914,6 +2081,7 @@
           for (const f of files) {
             const ab = await f.arrayBuffer();
             embeddedTraces.push({
+              tag: defaultTagFromName(f.name || ""),
               base64: arrayBufferToBase64(ab),
               mimeType: String(f.type || "application/octet-stream"),
               filename: f.name || "trace",
@@ -1921,33 +2089,35 @@
           }
           embedded.traceImages = embeddedTraces;
           traceImageUploads = files.map((f) => ({
+            tag: defaultTagFromName(f.name || ""),
             name: f.name || "trace",
             path: "",
           }));
           renderTraceImageUploads();
           setPickedHint(
             hintEl,
-            `Picked ${files.length} trace image(s) (embedded in JSON config).`,
+            `Picked ${files.length} reference image(s) (embedded in JSON config).`,
           );
           setStatus(
             "ok",
-            "Embedded trace images into JSON config. Download the JSON config and run the JSON-config command.",
+            "Embedded reference images into JSON config. Download the JSON config and run the JSON-config command.",
           );
         } catch (e) {
           // Fallback: filename only
           clearEmbedded("traceImages");
           traceImageUploads = files.map((f) => ({
+            tag: defaultTagFromName(f.name || ""),
             name: f.name || "trace",
             path: joinBaseDirAndName(baseDir, f.name) || f.name,
           }));
           renderTraceImageUploads();
           setPickedHint(
             hintEl,
-            `Picked ${files.length} trace image(s) (paste real paths if needed).`,
+            `Picked ${files.length} reference image(s) (paste real paths if needed).`,
           );
           setStatus(
             "warn",
-            "Could not embed trace images. Paste full paths (or use relative paths) or run: npm run ui. " +
+            "Could not embed reference images. Paste full paths (or use relative paths) or run: npm run ui. " +
               String(e?.message || e),
           );
         }
@@ -2329,8 +2499,21 @@
           args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
         if (cfg.baselineImagePath)
           args.push("--baseline-image", q(cfg.baselineImagePath));
-        if (Array.isArray(cfg.traceImagePaths)) {
-          for (const p of cfg.traceImagePaths) args.push("--trace-image", q(p));
+        const refPaths = Array.isArray(cfg.referenceImagePaths)
+          ? cfg.referenceImagePaths
+              .map((x) => ({
+                tag: String((x && x.tag) || "").trim(),
+                path: String((x && x.path) || "").trim(),
+              }))
+              .filter((x) => x.path)
+          : Array.isArray(cfg.traceImagePaths)
+            ? cfg.traceImagePaths
+                .map((p) => ({ path: String(p || "").trim() }))
+                .filter((x) => x.path)
+            : [];
+        for (const it of refPaths) {
+          const spec = it.tag ? `${sanitizeTag(it.tag)}=${it.path}` : it.path;
+          args.push("--ref-image", q(spec));
         }
         if (cfg.bundleIncludes) args.push("--bundle-includes");
         if (cfg.outdir) args.push("--outdir", q(cfg.outdir));
@@ -2361,8 +2544,21 @@
           args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
         if (cfg.baselineImagePath)
           args.push("--baseline-image", q(cfg.baselineImagePath));
-        if (Array.isArray(cfg.traceImagePaths)) {
-          for (const p of cfg.traceImagePaths) args.push("--trace-image", q(p));
+        const refPaths = Array.isArray(cfg.referenceImagePaths)
+          ? cfg.referenceImagePaths
+              .map((x) => ({
+                tag: String((x && x.tag) || "").trim(),
+                path: String((x && x.path) || "").trim(),
+              }))
+              .filter((x) => x.path)
+          : Array.isArray(cfg.traceImagePaths)
+            ? cfg.traceImagePaths
+                .map((p) => ({ path: String(p || "").trim() }))
+                .filter((x) => x.path)
+            : [];
+        for (const it of refPaths) {
+          const spec = it.tag ? `${sanitizeTag(it.tag)}=${it.path}` : it.path;
+          args.push("--ref-image", q(spec));
         }
         if (enabled.includes("openai") && cfg.openaiModel)
           args.push("--openai-model", q(cfg.openaiModel));
@@ -2705,43 +2901,71 @@
             els.baselineImagePath.value = cfg.baselineImagePath || "";
           }
 
-          // Trace images (paths or embedded)
-          if (Array.isArray(cfg.traceImages) && cfg.traceImages.length) {
-            embedded.traceImages = cfg.traceImages
+          // Reference images (paths or embedded)
+          const refImagesRaw = Array.isArray(cfg.referenceImages)
+            ? cfg.referenceImages
+            : Array.isArray(cfg.traceImages)
+              ? cfg.traceImages
+              : [];
+
+          if (refImagesRaw.length) {
+            embedded.traceImages = refImagesRaw
               .map((x) => ({
+                tag:
+                  sanitizeTag((x && x.tag) || "") ||
+                  defaultTagFromName(String((x && x.filename) || "")),
                 base64: String((x && x.base64) || ""),
                 mimeType: String((x && x.mimeType) || ""),
                 filename: String((x && x.filename) || ""),
               }))
-              .filter((x) => x.base64 && x.mimeType);
+              .filter((x) => x.tag && x.base64 && x.mimeType);
             traceImageUploads = embedded.traceImages.map((x) => ({
-              name: x.filename || "trace",
+              tag:
+                sanitizeTag(x.tag) ||
+                defaultTagFromName(String(x.filename || "")),
+              name: x.filename || "img",
               path: "",
             }));
             renderTraceImageUploads();
             setPickedHint(
               els.traceImagesPickedHint,
-              `Loaded ${embedded.traceImages.length} embedded trace image(s).`,
+              `Loaded ${embedded.traceImages.length} embedded reference image(s).`,
             );
           } else {
             embedded.traceImages = [];
-            traceImageUploads = Array.isArray(cfg.traceImagePaths)
-              ? cfg.traceImagePaths
-                  .map((p) => String(p || "").trim())
-                  .filter(Boolean)
-                  .map((p) => ({
-                    name:
-                      String(p)
-                        .split(/[/\\]+/g)
-                        .slice(-1)[0] || p,
-                    path: p,
-                  }))
+
+            const refPathsRaw = Array.isArray(cfg.referenceImagePaths)
+              ? cfg.referenceImagePaths
               : [];
+
+            if (refPathsRaw.length) {
+              traceImageUploads = refPathsRaw
+                .map((x) => ({
+                  tag:
+                    sanitizeTag((x && x.tag) || "") ||
+                    defaultTagFromName(String((x && x.path) || "")),
+                  name: basenameAny((x && x.path) || "") || "img",
+                  path: String((x && x.path) || "").trim(),
+                }))
+                .filter((x) => x.tag && x.path);
+            } else {
+              traceImageUploads = Array.isArray(cfg.traceImagePaths)
+                ? cfg.traceImagePaths
+                    .map((p) => String(p || "").trim())
+                    .filter(Boolean)
+                    .map((p) => ({
+                      tag: defaultTagFromName(p),
+                      name: basenameAny(p) || p,
+                      path: p,
+                    }))
+                : [];
+            }
+
             renderTraceImageUploads();
             setPickedHint(
               els.traceImagesPickedHint,
               traceImageUploads.length
-                ? `Loaded ${traceImageUploads.length} trace image path(s).`
+                ? `Loaded ${traceImageUploads.length} reference image path(s).`
                 : "",
             );
           }
@@ -2864,43 +3088,71 @@
           els.baselineImagePath.value = cfg.baselineImagePath || "";
         }
 
-        // Trace images (paths or embedded)
-        if (Array.isArray(cfg.traceImages) && cfg.traceImages.length) {
-          embedded.traceImages = cfg.traceImages
+        // Reference images (paths or embedded)
+        const refImagesRaw = Array.isArray(cfg.referenceImages)
+          ? cfg.referenceImages
+          : Array.isArray(cfg.traceImages)
+            ? cfg.traceImages
+            : [];
+
+        if (refImagesRaw.length) {
+          embedded.traceImages = refImagesRaw
             .map((x) => ({
+              tag:
+                sanitizeTag((x && x.tag) || "") ||
+                defaultTagFromName(String((x && x.filename) || "")),
               base64: String((x && x.base64) || ""),
               mimeType: String((x && x.mimeType) || ""),
               filename: String((x && x.filename) || ""),
             }))
-            .filter((x) => x.base64 && x.mimeType);
+            .filter((x) => x.tag && x.base64 && x.mimeType);
           traceImageUploads = embedded.traceImages.map((x) => ({
-            name: x.filename || "trace",
+            tag:
+              sanitizeTag(x.tag) ||
+              defaultTagFromName(String(x.filename || "")),
+            name: x.filename || "img",
             path: "",
           }));
           renderTraceImageUploads();
           setPickedHint(
             els.traceImagesPickedHint,
-            `Imported ${embedded.traceImages.length} embedded trace image(s).`,
+            `Imported ${embedded.traceImages.length} embedded reference image(s).`,
           );
         } else {
           embedded.traceImages = [];
-          traceImageUploads = Array.isArray(cfg.traceImagePaths)
-            ? cfg.traceImagePaths
-                .map((p) => String(p || "").trim())
-                .filter(Boolean)
-                .map((p) => ({
-                  name:
-                    String(p)
-                      .split(/[/\\]+/g)
-                      .slice(-1)[0] || p,
-                  path: p,
-                }))
+
+          const refPathsRaw = Array.isArray(cfg.referenceImagePaths)
+            ? cfg.referenceImagePaths
             : [];
+
+          if (refPathsRaw.length) {
+            traceImageUploads = refPathsRaw
+              .map((x) => ({
+                tag:
+                  sanitizeTag((x && x.tag) || "") ||
+                  defaultTagFromName(String((x && x.path) || "")),
+                name: basenameAny((x && x.path) || "") || "img",
+                path: String((x && x.path) || "").trim(),
+              }))
+              .filter((x) => x.tag && x.path);
+          } else {
+            traceImageUploads = Array.isArray(cfg.traceImagePaths)
+              ? cfg.traceImagePaths
+                  .map((p) => String(p || "").trim())
+                  .filter(Boolean)
+                  .map((p) => ({
+                    tag: defaultTagFromName(p),
+                    name: basenameAny(p) || p,
+                    path: p,
+                  }))
+              : [];
+          }
+
           renderTraceImageUploads();
           setPickedHint(
             els.traceImagesPickedHint,
             traceImageUploads.length
-              ? `Imported ${traceImageUploads.length} trace image path(s).`
+              ? `Imported ${traceImageUploads.length} reference image path(s).`
               : "",
           );
         }

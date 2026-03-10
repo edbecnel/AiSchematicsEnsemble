@@ -18,7 +18,7 @@ import { netlistToDot } from "./netlist/graph.js";
 import { writeReportDocx } from "./report/docx.js";
 import { writeReportPdf } from "./report/pdf.js";
 import { convertDocxToPdfViaLibreOffice } from "./report/docxToPdf.js";
-import type { InputImage, ModelAnswer, ProviderName } from "./types.js";
+import type { InputImage, ModelAnswer, ProviderName, TaggedImagePath, TaggedInputImage } from "./types.js";
 
 export type RunBatchOptions = {
   questionPath?: string;
@@ -29,9 +29,13 @@ export type RunBatchOptions = {
   baselineNetlistFilename?: string;
   baselineImagePath?: string;
   baselineImage?: InputImage;
-  /** Optional oscilloscope trace images (paths) to attach as additional context. */
+  /** Optional tagged reference images (paths) to attach as additional context. */
+  referenceImagePaths?: TaggedImagePath[];
+  /** Optional tagged reference images (embedded base64), for programmatic callers. */
+  referenceImages?: TaggedInputImage[];
+  /** (Deprecated) Optional oscilloscope trace images (paths) to attach as additional context. */
   traceImagePaths?: string[];
-  /** Optional oscilloscope trace images (embedded base64), for programmatic callers. */
+  /** (Deprecated) Optional oscilloscope trace images (embedded base64). */
   traceImages?: InputImage[];
   bundleIncludes?: boolean;
   outdir?: string;
@@ -61,6 +65,8 @@ export type RunBatchResult = {
     baselineOriginalCir?: string;
     baselineIncludesJson?: string;
     baselineImage?: string;
+    referenceImages?: Array<{ tag: string; path: string }>;
+    /** (Deprecated) Saved reference images (same as referenceImages paths, without tags). */
     traceImages?: string[];
     answersJson: string;
   };
@@ -155,6 +161,31 @@ function sanitizeStem(name: string): string {
   const base = String(name || "").trim();
   const safe = base.replace(/[^a-zA-Z0-9._-]/g, "_");
   return safe || "image";
+}
+
+function sanitizeTag(tag: string): string {
+  const base = String(tag || "").trim();
+  const safe = base.replace(/[^a-zA-Z0-9._-]/g, "_").replace(/_+/g, "_");
+  return safe || "ref";
+}
+
+function defaultTagFromFilename(filename: string | undefined, fallback: string): string {
+  const base = String(filename || "").trim();
+  const stem = base ? base.replace(/\.[^./\\]+$/g, "") : "";
+  return sanitizeTag(stem || base || fallback);
+}
+
+function uniqueTag(tag: string, used: Map<string, number>): string {
+  const t0 = sanitizeTag(tag);
+  const n = used.get(t0) ?? 0;
+  if (n === 0) {
+    used.set(t0, 1);
+    return t0;
+  }
+  const t = `${t0}_${n + 1}`;
+  used.set(t0, n + 1);
+  used.set(t, 1);
+  return t;
 }
 
 async function uniqueDestPath(dir: string, filename: string): Promise<string> {
@@ -354,52 +385,105 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     await fs.copy(baselineImagePath, baselineImageSavedPath);
   }
 
-  // Trace images (oscilloscope screenshots)
-  const traceImagesFromOpts = Array.isArray(opts.traceImages) ? opts.traceImages.filter(Boolean) : [];
-  const traceImagePaths = traceImagesFromOpts.length ? [] : normalizePathList(opts.traceImagePaths);
+  // Reference images (tagged)
+  const usedTags = new Map<string, number>();
+  const referenceDir = path.join(runDir, "reference_images");
+  const referenceImages: Array<{ tag: string; image: InputImage; savedPath: string; savedFilename: string }> = [];
 
-  const traceImages: InputImage[] = [];
-  const traceImageSavedPaths: string[] = [];
-  const traceImageFilenames: string[] = [];
+  const refEmbedded = Array.isArray(opts.referenceImages) ? (opts.referenceImages as TaggedInputImage[]).filter(Boolean) : [];
+  const refPaths = Array.isArray(opts.referenceImagePaths) ? (opts.referenceImagePaths as TaggedImagePath[]).filter(Boolean) : [];
 
-  if (traceImagesFromOpts.length) {
-    const traceDir = path.join(runDir, "trace_images");
-    await fs.mkdirp(traceDir);
-    for (let i = 0; i < traceImagesFromOpts.length; i++) {
-      const img = traceImagesFromOpts[i];
-      if (!img?.mimeType || !img?.base64) continue;
-      const baseName = sanitizeStem(img.filename || `trace_${String(i + 1).padStart(2, "0")}`);
-      const ext = extFromMimeType(img.mimeType);
-      const dest = await uniqueDestPath(traceDir, `${baseName}${ext}`);
-      await fs.writeFile(dest, Buffer.from(img.base64, "base64"));
-      traceImages.push(img);
-      traceImageSavedPaths.push(dest);
-      traceImageFilenames.push(path.basename(dest));
-    }
+  // Legacy (deprecated) trace inputs are treated as reference images too.
+  const legacyTraceEmbedded = Array.isArray(opts.traceImages) ? opts.traceImages.filter(Boolean) : [];
+  const legacyTracePaths = normalizePathList(opts.traceImagePaths);
+
+  if (refEmbedded.length || refPaths.length || legacyTraceEmbedded.length || legacyTracePaths.length) {
+    await fs.mkdirp(referenceDir);
   }
 
-  if (traceImagePaths.length) {
-    const traceDir = path.join(runDir, "trace_images");
-    await fs.mkdirp(traceDir);
-    for (let i = 0; i < traceImagePaths.length; i++) {
-      const p = traceImagePaths[i];
-      if (!p) continue;
-      const img = await loadImageAsBase64(p);
-      traceImages.push(img);
+  for (let i = 0; i < refEmbedded.length; i++) {
+    const img = refEmbedded[i];
+    if (!img?.mimeType || !img?.base64) continue;
+    const tag = uniqueTag(img.tag || defaultTagFromFilename(img.filename, `ref_${String(i + 1).padStart(2, "0")}`), usedTags);
+    const ext = extFromMimeType(img.mimeType);
+    const baseName = sanitizeStem(`${tag}__${img.filename || "ref"}`);
+    const dest = await uniqueDestPath(referenceDir, `${baseName}${ext}`);
+    await fs.writeFile(dest, Buffer.from(img.base64, "base64"));
+    const savedFilename = path.basename(dest);
+    referenceImages.push({
+      tag,
+      image: { mimeType: img.mimeType, base64: img.base64, filename: savedFilename },
+      savedPath: dest,
+      savedFilename,
+    });
+  }
 
-      const ext = path.extname(p) || extFromMimeType(img.mimeType);
-      const baseName = sanitizeStem(path.basename(p, path.extname(p)) || `trace_${String(i + 1).padStart(2, "0")}`);
-      const dest = await uniqueDestPath(traceDir, `${baseName}${ext}`);
-      await fs.copy(p, dest);
-      traceImageSavedPaths.push(dest);
-      traceImageFilenames.push(path.basename(dest));
-    }
+  for (let i = 0; i < refPaths.length; i++) {
+    const it = refPaths[i];
+    const p = String(it?.path || "").trim();
+    if (!p) continue;
+    const tag = uniqueTag(it.tag || defaultTagFromFilename(path.basename(p), `ref_${String(i + 1).padStart(2, "0")}`), usedTags);
+    const img = await loadImageAsBase64(p);
+    const ext = path.extname(p) || extFromMimeType(img.mimeType);
+    const baseName = sanitizeStem(`${tag}__${path.basename(p, path.extname(p)) || "ref"}`);
+    const dest = await uniqueDestPath(referenceDir, `${baseName}${ext}`);
+    await fs.copy(p, dest);
+    const savedFilename = path.basename(dest);
+    referenceImages.push({
+      tag,
+      image: { mimeType: img.mimeType, base64: img.base64, filename: savedFilename },
+      savedPath: dest,
+      savedFilename,
+    });
+  }
+
+  for (let i = 0; i < legacyTraceEmbedded.length; i++) {
+    const img = legacyTraceEmbedded[i];
+    if (!img?.mimeType || !img?.base64) continue;
+    const tag = uniqueTag(defaultTagFromFilename(img.filename, `trace_${String(i + 1).padStart(2, "0")}`), usedTags);
+    const ext = extFromMimeType(img.mimeType);
+    const baseName = sanitizeStem(`${tag}__${img.filename || "trace"}`);
+    const dest = await uniqueDestPath(referenceDir, `${baseName}${ext}`);
+    await fs.writeFile(dest, Buffer.from(img.base64, "base64"));
+    const savedFilename = path.basename(dest);
+    referenceImages.push({
+      tag,
+      image: { mimeType: img.mimeType, base64: img.base64, filename: savedFilename },
+      savedPath: dest,
+      savedFilename,
+    });
+  }
+
+  for (let i = 0; i < legacyTracePaths.length; i++) {
+    const p = legacyTracePaths[i];
+    if (!p) continue;
+    const tag = uniqueTag(defaultTagFromFilename(path.basename(p), `trace_${String(i + 1).padStart(2, "0")}`), usedTags);
+    const img = await loadImageAsBase64(p);
+    const ext = path.extname(p) || extFromMimeType(img.mimeType);
+    const baseName = sanitizeStem(`${tag}__${path.basename(p, path.extname(p)) || "trace"}`);
+    const dest = await uniqueDestPath(referenceDir, `${baseName}${ext}`);
+    await fs.copy(p, dest);
+    const savedFilename = path.basename(dest);
+    referenceImages.push({
+      tag,
+      image: { mimeType: img.mimeType, base64: img.base64, filename: savedFilename },
+      savedPath: dest,
+      savedFilename,
+    });
   }
 
   const allImages: InputImage[] = [
     ...(baselineImage ? [baselineImage] : []),
-    ...traceImages,
+    ...referenceImages.map((x) => x.image),
   ];
+
+  const referenceIndexLines = referenceImages.length
+    ? [
+        "REFERENCE IMAGES (tag -> filename):",
+        ...referenceImages.map((x) => `- ${x.tag}: ${x.savedFilename}`),
+        "You may reference these in the question text using [[ref:TAG]].",
+      ]
+    : [];
 
   // Fanout prompt
   const fanoutPrompt =
@@ -408,7 +492,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
       ? `\n\nBASELINE NETLIST (current topology):\n\n\`\`\`spice\n${baselineNetlist.trim()}\n\`\`\`\n`
       : "") +
     (baselineImageFilename ? "\n\nNOTE: A schematic screenshot image is provided as context.\n" : "") +
-    (traceImageFilenames.length ? `\n\nNOTE: ${traceImageFilenames.length} oscilloscope trace image(s) are provided as context.\n` : "");
+    (referenceIndexLines.length ? `\n\n${referenceIndexLines.join("\n")}\n` : "");
 
   // Fanout
   logger.info("Querying models...");
@@ -449,7 +533,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     question,
     baselineNetlist,
     baselineImageFilename: baselineImageFilename ? path.basename(baselineImageSavedPath ?? baselineImageFilename) : undefined,
-    traceImageFilenames,
+    referenceImages: referenceImages.map((x) => ({ tag: x.tag, filename: x.savedFilename })),
     answers,
   });
 
@@ -610,6 +694,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     finalMarkdown: finalMarkdownBest,
     spiceNetlist: out.spiceNetlist,
     baselineSchematicPath: baselineImageSavedPath,
+    referenceImages: referenceImages.map((x) => ({ tag: x.tag, path: x.savedPath })),
     connectivitySchematicPngPath: schematicPng,
     answers: answersForReport,
   });
@@ -629,6 +714,7 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
       finalMarkdown: finalMarkdownBest,
       spiceNetlist: out.spiceNetlist,
       baselineSchematicPath: baselineImageSavedPath,
+      referenceImages: referenceImages.map((x) => ({ tag: x.tag, path: x.savedPath })),
       connectivitySchematicPngPath: schematicPng,
       answers: answersForReport,
     });
@@ -650,7 +736,10 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
       baselineOriginalCir,
       baselineIncludesJson,
       baselineImage: baselineImageSavedPath,
-      traceImages: traceImageSavedPaths.length ? traceImageSavedPaths : undefined,
+      referenceImages: referenceImages.length
+        ? referenceImages.map((x) => ({ tag: x.tag, path: x.savedPath }))
+        : undefined,
+      traceImages: referenceImages.length ? referenceImages.map((x) => x.savedPath) : undefined,
       answersJson,
     },
   };

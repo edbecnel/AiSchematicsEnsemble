@@ -139,7 +139,7 @@ export async function writeReportPdf(args: {
   finalMarkdown: string;
   spiceNetlist: string;
   baselineSchematicPath?: string;
-  traceImagePaths?: string[];
+  referenceImages?: Array<{ tag: string; path: string }>;
   connectivitySchematicPngPath?: string;
   answers?: Array<{ heading: string; markdown: string }>;
 }): Promise<void> {
@@ -185,17 +185,18 @@ export async function writeReportPdf(args: {
     await addImageBestEffort(doc, args.baselineSchematicPath, "Baseline Schematic Screenshot");
   }
 
-  const tracePaths = Array.isArray(args.traceImagePaths)
-    ? args.traceImagePaths.map((p) => String(p || "").trim()).filter(Boolean)
-    : [];
-  for (const p of tracePaths) {
-    if (!(await fs.pathExists(p))) {
-      heading(doc, "Oscilloscope Trace Image", 1);
-      paragraph(doc, `Trace image not found: ${p}`);
+  const refs = Array.isArray(args.referenceImages) ? args.referenceImages : [];
+  const refItems = refs
+    .map((x) => ({ tag: String((x as any)?.tag || "").trim(), path: String((x as any)?.path || "").trim() }))
+    .filter((x) => x.tag && x.path);
+  for (const it of refItems) {
+    if (!(await fs.pathExists(it.path))) {
+      heading(doc, "Reference Image", 1);
+      paragraph(doc, `Reference image not found: ${it.path}`);
       continue;
     }
-    const name = path.basename(p);
-    await addImageBestEffort(doc, p, `Oscilloscope Trace: ${sanitizeText(name)}`);
+    const name = path.basename(it.path);
+    await addImageBestEffort(doc, it.path, `Reference Image (${sanitizeText(it.tag)}): ${sanitizeText(name)}`);
   }
 
   if (args.connectivitySchematicPngPath && (await fs.pathExists(args.connectivitySchematicPngPath))) {

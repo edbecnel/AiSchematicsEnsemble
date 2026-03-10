@@ -11,7 +11,7 @@ export function buildEnsemblePrompt(args: {
   question: string;
   baselineNetlist?: string;
   baselineImageFilename?: string;
-  traceImageFilenames?: string[];
+  referenceImages?: Array<{ tag: string; filename: string }>;
   answers: ModelAnswer[];
 }): string {
   const blocks = args.answers
@@ -32,11 +32,18 @@ export function buildEnsemblePrompt(args: {
     ? `\nSCHEMATIC SCREENSHOT PROVIDED: ${args.baselineImageFilename}\n- Use the attached image as reference for topology/components.\n- If it conflicts with any model text, prefer the screenshot + baseline netlist.\n`
     : "";
 
-  const traceList = Array.isArray(args.traceImageFilenames)
-    ? args.traceImageFilenames.map((s) => String(s || "").trim()).filter(Boolean)
+  const refList = Array.isArray(args.referenceImages)
+    ? args.referenceImages
+        .map((x) => ({
+          tag: String((x as any)?.tag || "").trim(),
+          filename: String((x as any)?.filename || "").trim(),
+        }))
+        .filter((x) => x.tag && x.filename)
     : [];
-  const traceNote = traceList.length
-    ? `\nOSCILLOSCOPE TRACE IMAGE(S) PROVIDED (${traceList.length}): ${traceList.join(", ")}\n- Treat them as measurement evidence (voltage/current vs time).\n- Use them to validate/invalidate assumptions and propose what to measure next.\n`
+  const refNote = refList.length
+    ? `\nREFERENCE IMAGE(S) PROVIDED (${refList.length}) (tag -> filename):\n${refList
+        .map((x) => `- ${x.tag}: ${x.filename}`)
+        .join("\n")}\n- Treat them as supporting context for the main schematic/question.\n- When the question includes [[ref:TAG]], it refers to the reference image with that tag.\n`
     : "";
 
   return `You are an expert electrical engineer + experimentalist.
@@ -45,7 +52,7 @@ Your job is to ensemble multiple AI outputs into a single careful recommendation
 
 QUESTION:
 ${args.question.trim()}
-${baseline}${baselineImageNote}${traceNote}
+${baseline}${baselineImageNote}${refNote}
 
 MODEL OUTPUTS:
 ${blocks}

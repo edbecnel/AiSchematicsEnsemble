@@ -4,9 +4,13 @@ type UiDefaults = {
   questionPath?: string;
   baselineNetlistPath?: string;
   baselineImagePath?: string;
-  /** Optional oscilloscope trace image paths (usually uploaded snapshots). */
+  /** Optional tagged reference image paths (usually uploaded snapshots). */
+  referenceImagePaths?: Array<{ tag: string; path: string }>;
+  /** Optional tagged reference image uploads for import/export traceability. */
+  referenceImageUploads?: Array<{ tag: string; name: string; path: string }>;
+  /** Legacy oscilloscope trace image paths (deprecated). */
   traceImagePaths?: string[];
-  /** Optional oscilloscope trace image uploads for import/export traceability. */
+  /** Legacy oscilloscope trace image uploads (deprecated). */
   traceImageUploads?: Array<{ name: string; path: string }>;
   includeUploads?: Array<{ name: string; path: string }>;
   outdir?: string;
@@ -24,7 +28,7 @@ type UiInit = {
   defaults: UiDefaults;
 };
 
-type UploadKind = "question" | "baselineNetlist" | "baselineImage" | "traceImage" | "include";
+type UploadKind = "question" | "baselineNetlist" | "baselineImage" | "refImage" | "traceImage" | "include";
 
 function byId<T extends HTMLElement = HTMLElement>(id: string): T | null {
   return document.getElementById(id) as T | null;
@@ -150,6 +154,40 @@ function basenameAny(p: unknown): string {
   const s = String(p ?? "");
   const parts = s.split(/[\\/]+/g).filter(Boolean);
   return parts.length ? parts[parts.length - 1] : s;
+}
+
+function sanitizeTag(raw: unknown): string {
+  const s = String(raw ?? "").trim();
+  if (!s) return "";
+  const cleaned = s
+    .replace(/\s+/g, "_")
+    .replace(/[^a-zA-Z0-9_.-]/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return cleaned.slice(0, 64);
+}
+
+function defaultTagFromName(name: string): string {
+  const base = basenameAny(name);
+  const stem = base.replace(/\.[^.]+$/, "");
+  return sanitizeTag(stem) || "img";
+}
+
+function makeUniqueTag(desired: string, used: Set<string>): string {
+  const base = desired || "img";
+  if (!used.has(base)) {
+    used.add(base);
+    return base;
+  }
+  for (let i = 2; i < 1000; i++) {
+    const cand = `${base}_${i}`;
+    if (!used.has(cand)) {
+      used.add(cand);
+      return cand;
+    }
+  }
+  const fallback = `${base}_${Date.now()}`;
+  used.add(fallback);
+  return fallback;
 }
 
 function setPickedHint(id: string, msg: string) {
@@ -305,8 +343,12 @@ function getConfigFromUi() {
     questionPath: getEffectivePath("questionPath"),
     baselineNetlistPath: getEffectivePath("baselineNetlistPath"),
     baselineImagePath: getEffectivePath("baselineImagePath"),
-    traceImagePaths: traceImageUploads.map((x) => String(x?.path || "")).filter(Boolean),
-    traceImageUploads: traceImageUploads.map((x) => ({ name: String(x?.name || ""), path: String(x?.path || "") })).filter((x) => x.name || x.path),
+    referenceImagePaths: referenceImageUploads
+      .map((x) => ({ tag: String(x?.tag || "").trim(), path: String(x?.path || "").trim() }))
+      .filter((x) => x.tag && x.path),
+    referenceImageUploads: referenceImageUploads
+      .map((x) => ({ tag: String(x?.tag || "").trim(), name: String(x?.name || ""), path: String(x?.path || "").trim() }))
+      .filter((x) => x.tag || x.name || x.path),
     includeUploads: includeUploads.map((x) => ({ name: String(x?.name || ""), path: String(x?.path || "") })).filter((x) => x.name || x.path),
     outdir: String(byId<HTMLInputElement>("outdir")?.value ?? "").trim(),
     schematicDpi: Number.isFinite(dpi) && dpi > 0 ? dpi : 600,
@@ -328,10 +370,17 @@ function buildArgs(cfg: any, q: (v: unknown) => string) {
   if (cfg.questionPath) args.push("--question", q(cfg.questionPath));
   if (cfg.baselineNetlistPath) args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
   if (cfg.baselineImagePath) args.push("--baseline-image", q(cfg.baselineImagePath));
-  const tracePaths: string[] = Array.isArray(cfg.traceImagePaths)
-    ? cfg.traceImagePaths.map((p: any) => String(p || "").trim()).filter(Boolean)
-    : [];
-  for (const p of tracePaths) args.push("--trace-image", q(p));
+  const refPaths: Array<{ tag?: string; path: string }> = Array.isArray(cfg.referenceImagePaths)
+    ? cfg.referenceImagePaths
+        .map((x: any) => ({ tag: String(x?.tag || "").trim(), path: String(x?.path || "").trim() }))
+        .filter((x: any) => x.path)
+    : (Array.isArray(cfg.traceImagePaths)
+        ? cfg.traceImagePaths.map((p: any) => ({ path: String(p || "").trim() })).filter((x: any) => x.path)
+        : []);
+  for (const it of refPaths) {
+    const spec = it.tag ? `${sanitizeTag(it.tag)}=${it.path}` : it.path;
+    args.push("--ref-image", q(spec));
+  }
   if (cfg.bundleIncludes) args.push("--bundle-includes");
   if (cfg.outdir) args.push("--outdir", q(cfg.outdir));
   args.push("--schematic-dpi", q(cfg.schematicDpi || 600));
@@ -352,10 +401,17 @@ function buildChatArgs(cfg: any, q: (v: unknown) => string) {
 
   if (cfg.baselineNetlistPath) args.push("--baseline-netlist", q(cfg.baselineNetlistPath));
   if (cfg.baselineImagePath) args.push("--baseline-image", q(cfg.baselineImagePath));
-  const tracePaths: string[] = Array.isArray(cfg.traceImagePaths)
-    ? cfg.traceImagePaths.map((p: any) => String(p || "").trim()).filter(Boolean)
-    : [];
-  for (const p of tracePaths) args.push("--trace-image", q(p));
+  const refPaths: Array<{ tag?: string; path: string }> = Array.isArray(cfg.referenceImagePaths)
+    ? cfg.referenceImagePaths
+        .map((x: any) => ({ tag: String(x?.tag || "").trim(), path: String(x?.path || "").trim() }))
+        .filter((x: any) => x.path)
+    : (Array.isArray(cfg.traceImagePaths)
+        ? cfg.traceImagePaths.map((p: any) => ({ path: String(p || "").trim() })).filter((x: any) => x.path)
+        : []);
+  for (const it of refPaths) {
+    const spec = it.tag ? `${sanitizeTag(it.tag)}=${it.path}` : it.path;
+    args.push("--ref-image", q(spec));
+  }
 
   if (enabled.includes("openai") && cfg.openaiModel) args.push("--openai-model", q(cfg.openaiModel));
   if (enabled.includes("xai") && cfg.grokModel) args.push("--grok-model", q(cfg.grokModel));
@@ -374,8 +430,8 @@ function updateCommandPreview() {
       String(cfg.questionPath || ""),
       String(cfg.baselineNetlistPath || ""),
       String(cfg.baselineImagePath || ""),
-      ...((Array.isArray((cfg as any).traceImagePaths) ? (cfg as any).traceImagePaths : [])
-        .map((p: any) => String(p || ""))
+      ...((Array.isArray((cfg as any).referenceImagePaths) ? (cfg as any).referenceImagePaths : [])
+        .map((x: any) => String(x?.path || ""))
         .filter(Boolean)),
       ...((Array.isArray((cfg as any).includeUploads) ? (cfg as any).includeUploads : [])
         .map((x: any) => String(x?.path || ""))
@@ -394,7 +450,7 @@ function updateCommandPreview() {
 }
 
 let includeUploads: Array<{ name: string; path: string }> = [];
-let traceImageUploads: Array<{ name: string; path: string }> = [];
+let referenceImageUploads: Array<{ tag: string; name: string; path: string }> = [];
 
 function isUploadSnapshotPath(p: unknown): boolean {
   const s = String(p || "").split("\\").join("/").toLowerCase();
@@ -438,10 +494,18 @@ async function warnConfigInputs(cfg: any, sourceLabel: string): Promise<void> {
     if (s) paths.push(s);
   }
 
-  const traces = Array.isArray(cfg?.traceImagePaths) ? cfg.traceImagePaths : [];
-  for (const p0 of traces) {
-    const s = String(p0 || "").trim();
-    if (s) paths.push(s);
+  const ref0 = Array.isArray(cfg?.referenceImagePaths) ? cfg.referenceImagePaths : [];
+  if (ref0.length) {
+    for (const it of ref0) {
+      const s = String(it?.path || "").trim();
+      if (s) paths.push(s);
+    }
+  } else {
+    const traces = Array.isArray(cfg?.traceImagePaths) ? cfg.traceImagePaths : [];
+    for (const p0 of traces) {
+      const s = String(p0 || "").trim();
+      if (s) paths.push(s);
+    }
   }
 
   const inc = Array.isArray(cfg?.includeUploads) ? cfg.includeUploads : [];
@@ -477,30 +541,95 @@ function renderIncludeUploads() {
   if (list) list.textContent = names.length ? ("Includes: " + names.join(", ")) : "";
 }
 
-function renderTraceImageUploads() {
-  const names = traceImageUploads.map((x) => String(x?.name || "")).filter(Boolean);
+function renderReferenceImageUploads() {
+  const tags = referenceImageUploads.map((x) => String(x?.tag || "")).filter(Boolean);
   const summary = byId<HTMLInputElement>("traceSummary");
-  if (summary) summary.value = names.length ? `${names.length} image(s) uploaded` : "";
+  if (summary) summary.value = tags.length ? `${tags.length} image(s) uploaded` : "";
   const list = byId<HTMLDivElement>("traceFilesList");
-  if (list) list.textContent = names.length ? ("Traces: " + names.join(", ")) : "";
+  if (!list) return;
+
+  list.innerHTML = "";
+  if (!referenceImageUploads.length) return;
+
+  const used = new Set<string>();
+  referenceImageUploads = referenceImageUploads.map((x) => {
+    const tag = makeUniqueTag(sanitizeTag(x.tag) || defaultTagFromName(x.name || x.path), used);
+    return { ...x, tag };
+  });
+
+  for (let i = 0; i < referenceImageUploads.length; i++) {
+    const it = referenceImageUploads[i];
+
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.gap = "8px";
+    row.style.alignItems = "center";
+    row.style.marginTop = "6px";
+
+    const tagInput = document.createElement("input");
+    tagInput.type = "text";
+    tagInput.value = String(it.tag || "");
+    tagInput.placeholder = "tag";
+    tagInput.style.padding = "6px 8px";
+    tagInput.style.borderRadius = "8px";
+    tagInput.style.border = "1px solid rgba(127,127,127,.4)";
+    tagInput.style.background = "rgba(127,127,127,.06)";
+    tagInput.style.color = "inherit";
+    tagInput.style.width = "160px";
+
+    tagInput.addEventListener("blur", () => {
+      const raw = String(tagInput.value || "");
+      let next = sanitizeTag(raw);
+      if (!next) next = defaultTagFromName(it.name || it.path);
+
+      // Re-unique all tags (simple + deterministic)
+      const used2 = new Set<string>();
+      referenceImageUploads = referenceImageUploads.map((x, idx) => {
+        const desired = idx === i ? next : sanitizeTag(x.tag) || defaultTagFromName(x.name || x.path);
+        const unique = makeUniqueTag(desired, used2);
+        return { ...x, tag: unique };
+      });
+      tagInput.value = referenceImageUploads[i].tag;
+      updateCommandPreview();
+    });
+
+    tagInput.addEventListener("input", () => {
+      referenceImageUploads[i] = { ...referenceImageUploads[i], tag: String(tagInput.value || "") };
+      updateCommandPreview();
+    });
+
+    const name = document.createElement("span");
+    name.textContent = basenameAny(it.name || it.path);
+    name.className = "mono";
+
+    row.appendChild(tagInput);
+    row.appendChild(name);
+    list.appendChild(row);
+  }
 }
 
-async function clearTraceImageUploads() {
-  const prevPaths = traceImageUploads.map((x) => String(x?.path || "")).filter(Boolean);
-  traceImageUploads = [];
+async function clearReferenceImageUploads() {
+  const prevPaths = referenceImageUploads.map((x) => String(x?.path || "")).filter(Boolean);
+  referenceImageUploads = [];
   const el = byId<HTMLInputElement>("traceFiles");
   if (el) el.value = "";
-  renderTraceImageUploads();
+  renderReferenceImageUploads();
   updateCommandPreview();
 
   // Best-effort delete uploaded snapshots (only if they were in the current upload area)
   const anyCurrent = prevPaths.some((p) => isCurrentUploadPath(p));
   if (!anyCurrent) return;
   try {
-    await deleteCurrentUpload("traceImage");
-    setStatus("ok", "Cleared trace images and deleted uploaded snapshot folder.");
+    await deleteCurrentUpload("refImage");
+    // best-effort cleanup for older snapshot folder name
+    try {
+      await deleteCurrentUpload("traceImage");
+    } catch {
+      // ignore
+    }
+    setStatus("ok", "Cleared reference images and deleted uploaded snapshot folder.");
   } catch (e: any) {
-    setStatus("warn", "Cleared trace images, but could not delete uploaded snapshots: " + String(e?.message || e));
+    setStatus("warn", "Cleared reference images, but could not delete uploaded snapshots: " + String(e?.message || e));
   }
 }
 
@@ -560,22 +689,24 @@ async function pickAndUploadIncludes() {
   }
 }
 
-async function pickAndUploadTraceImages() {
+async function pickAndUploadReferenceImages() {
   try {
     const input = byId<HTMLInputElement>("traceFiles");
     const files = input?.files ? Array.from(input.files) : [];
     if (!files.length) return;
 
-    setStatus("hint", "Uploading trace images...");
-    const uploaded: Array<{ name: string; path: string }> = [];
+    setStatus("hint", "Uploading reference images...");
+    const uploaded: Array<{ tag: string; name: string; path: string }> = [];
+    const used = new Set(referenceImageUploads.map((x) => sanitizeTag(x.tag)).filter(Boolean));
     for (const f of files) {
-      const saved = await uploadPickedFile(f, "traceImage");
-      uploaded.push({ name: f.name, path: saved.path });
+      const saved = await uploadPickedFile(f, "refImage");
+      const tag = makeUniqueTag(defaultTagFromName(f.name), used);
+      uploaded.push({ tag, name: f.name, path: saved.path });
     }
 
-    traceImageUploads = uploaded;
-    renderTraceImageUploads();
-    setStatus("ok", `Uploaded ${uploaded.length} trace image(s).`);
+    referenceImageUploads = uploaded;
+    renderReferenceImageUploads();
+    setStatus("ok", `Uploaded ${uploaded.length} reference image(s).`);
     updateCommandPreview();
   } catch (e: any) {
     setStatus("err", String(e?.message || e));
@@ -627,19 +758,29 @@ function setConfig(cfg: UiDefaults) {
   setPathBox("baselineImagePath", basenameAny(biPath), biPath || undefined);
 
   // Includes are uploaded separately; import/export can remember them, but file inputs cannot be auto-populated.
-  // Same for trace images (multi-upload).
-  if (Array.isArray((cfg as any).traceImageUploads)) {
-    traceImageUploads = (cfg as any).traceImageUploads
-      .map((x: any) => ({ name: String(x?.name || ""), path: String(x?.path || "") }))
-      .filter((x: any) => x.name || x.path);
+  // Same for reference images (multi-upload + tags).
+  if (Array.isArray((cfg as any).referenceImageUploads)) {
+    referenceImageUploads = (cfg as any).referenceImageUploads
+      .map((x: any) => ({ tag: String(x?.tag || ""), name: String(x?.name || ""), path: String(x?.path || "") }))
+      .filter((x: any) => x.tag || x.name || x.path)
+      .map((x: any) => ({ ...x, tag: sanitizeTag(x.tag) || defaultTagFromName(x.name || x.path) }));
+  } else if (Array.isArray((cfg as any).referenceImagePaths)) {
+    referenceImageUploads = (cfg as any).referenceImagePaths
+      .map((x: any) => ({ tag: String(x?.tag || ""), name: basenameAny(x?.path), path: String(x?.path || "") }))
+      .filter((x: any) => x.tag || x.name || x.path)
+      .map((x: any) => ({ ...x, tag: sanitizeTag(x.tag) || defaultTagFromName(x.name || x.path) }));
+  } else if (Array.isArray((cfg as any).traceImageUploads)) {
+    referenceImageUploads = (cfg as any).traceImageUploads
+      .map((x: any) => ({ tag: defaultTagFromName(x?.name || x?.path), name: String(x?.name || ""), path: String(x?.path || "") }))
+      .filter((x: any) => x.tag || x.name || x.path);
   } else if (Array.isArray((cfg as any).traceImagePaths)) {
-    traceImageUploads = (cfg as any).traceImagePaths
-      .map((p: any) => ({ name: basenameAny(p), path: String(p || "") }))
-      .filter((x: any) => x.name || x.path);
+    referenceImageUploads = (cfg as any).traceImagePaths
+      .map((p: any) => ({ tag: defaultTagFromName(p), name: basenameAny(p), path: String(p || "") }))
+      .filter((x: any) => x.tag || x.name || x.path);
   } else {
-    traceImageUploads = [];
+    referenceImageUploads = [];
   }
-  renderTraceImageUploads();
+  renderReferenceImageUploads();
 
   if (Array.isArray((cfg as any).includeUploads)) {
     includeUploads = (cfg as any).includeUploads
@@ -908,13 +1049,13 @@ function wireEvents(defaults: UiDefaults) {
   on("questionFile", "change", () => void pickAndUpload("question"));
   on("baselineNetlistFile", "change", () => void pickAndUpload("baselineNetlist"));
   on("baselineImageFile", "change", () => void pickAndUpload("baselineImage"));
-  on("traceFiles", "change", () => void pickAndUploadTraceImages());
+  on("traceFiles", "change", () => void pickAndUploadReferenceImages());
   on("includeFiles", "change", () => void pickAndUploadIncludes());
 
   on("questionClearBtn", "click", () => clearPicked("question"));
   on("baselineNetlistClearBtn", "click", () => clearPicked("baselineNetlist"));
   on("baselineImageClearBtn", "click", () => clearPicked("baselineImage"));
-  on("traceClearBtn", "click", () => void clearTraceImageUploads());
+  on("traceClearBtn", "click", () => void clearReferenceImageUploads());
   on("includeClearBtn", "click", () => clearIncludeUploads());
 
   // Local save/load/export/import

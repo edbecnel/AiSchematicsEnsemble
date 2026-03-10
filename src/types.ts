@@ -9,6 +9,18 @@ export interface InputImage {
   filename?: string;
 }
 
+export interface TaggedInputImage extends InputImage {
+  /** Stable tag/id used to reference the image from the question text. */
+  tag: string;
+}
+
+export interface TaggedImagePath {
+  /** Stable tag/id used to reference the image from the question text. */
+  tag: string;
+  /** Path to the image file on disk. */
+  path: string;
+}
+
 export interface ModelAnswer {
   provider: ProviderName;
   model: string;
