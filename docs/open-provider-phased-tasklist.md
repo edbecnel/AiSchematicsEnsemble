@@ -64,20 +64,20 @@ These are the recommended first implementation steps across the main open-provid
 
 ## Phase 0 — Architecture alignment and baseline hardening
 
-- [ ] Approve the target architecture in [docs/open-provider-architecture-plan.md](docs/open-provider-architecture-plan.md)
-- [ ] Confirm MVP scope vs deferred items
+- [x] Approve the target architecture in [docs/open-provider-architecture-plan.md](docs/open-provider-architecture-plan.md)
+- [x] Confirm MVP scope vs deferred items
 - [ ] Freeze current provider behavior with regression test scenarios for OpenAI, Anthropic, Gemini, and xAI
 - [ ] Document current provider/model defaults from [src/index.ts](src/index.ts) and [src/util/runConfig.ts](src/util/runConfig.ts)
-- [ ] Identify which existing outputs must remain backward compatible (`final.md`, `final.cir`, `final.json`, `report.docx`)
-- [ ] Define migration rules for existing config files and saved run folders
-- [ ] Define the initial canonical internal entities:
-  - [ ] `ProviderDefinition`
-  - [ ] `UserProviderCredential`
-  - [ ] `Run`
-  - [ ] `RunDispatch`
-  - [ ] `RunResult`
-  - [ ] `NormalizedFinding`
-  - [ ] `SynthesisResult`
+- [x] Accept breaking changes to legacy outputs for this migration; no backward-compatibility requirement for `final.md`, `final.cir`, `final.json`, or `report.docx`
+- [x] Defer automated migration rules/support for existing config files and saved run folders unless a later requirement makes them necessary
+- [x] Define the initial canonical internal entities (proposed definitions: [open-provider-architecture-plan.md](open-provider-architecture-plan.md#phase0-canonical-entities)):
+  - [x] `ProviderDefinition`
+  - [x] `UserProviderCredential`
+  - [x] `Run`
+  - [x] `RunDispatch`
+  - [x] `RunResult`
+  - [x] `NormalizedFinding`
+  - [x] `SynthesisResult`
 
 ### Phase 0 guardrails
 

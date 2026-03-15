@@ -442,6 +442,47 @@ The supplied domain model is strong and should be adopted with a few additions.
 - **NormalizationVersion**
   - records which parser/schema version interpreted a result
 
+<a id="phase0-canonical-entities"></a>
+
+### 8.2.5 Proposed Phase 0 canonical definitions
+
+These are the recommended initial meanings for the Phase 0 canonical internal entities so implementation can proceed with a stable vocabulary before detailed schema work begins.
+
+- **`ProviderDefinition`**
+  - the canonical description of a provider lane the system can dispatch to
+  - owns protocol, base URL strategy, billing mode, scope, capability defaults, enablement state, and policy metadata
+  - should describe the provider/endpoints themselves, not store user secrets
+
+- **`UserProviderCredential`**
+  - a user- or tenant-scoped credential record associated with a `ProviderDefinition`
+  - stores encrypted credential material, validation state, ownership, audit metadata, and lifecycle state
+  - should never expose raw secret values back to clients
+
+- **`Run`**
+  - the top-level record for one analysis execution request
+  - owns run mode, project/user linkage, requested providers, artifact set, lifecycle timestamps, aggregate status, and final deliverable references
+  - should be the parent record for dispatches, normalized outputs, synthesis outputs, and report artifacts
+
+- **`RunDispatch`**
+  - one provider/model invocation attempt within a `Run`
+  - owns the resolved provider-model pair, dispatch status, request/response references, timing, usage, retry information, and normalized provider error state
+  - should remain granular enough that partial success is preserved when one provider fails and others succeed
+
+- **`RunResult`**
+  - one persisted result record produced from a `RunDispatch`
+  - owns raw provider output references, extracted text, parser outcome, normalization version, parse quality, and result status
+  - should be provider-agnostic so downstream synthesis and reporting do not depend on vendor-specific payloads
+
+- **`NormalizedFinding`**
+  - the canonical unit of analysis output derived from one or more `RunResult` records
+  - owns normalized title/category/severity, evidence references, assumptions, uncertainty/confidence notes, and provenance back to source results
+  - should be the main input to clustering, consensus, prioritization, and synthesis
+
+- **`SynthesisResult`**
+  - the persisted output of the optional cross-provider synthesis or judge stage for a `Run`
+  - owns grouped findings, conflicts, prioritized actions, open questions, confidence notes, and synthesis-stage provenance
+  - should remain optional so analysis-only runs still succeed without synthesis
+
 ### 8.3 Key type additions
 
 Extend your supplied types with the concepts below:
