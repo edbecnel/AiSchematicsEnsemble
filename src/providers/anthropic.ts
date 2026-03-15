@@ -1,11 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { ContentBlockParam } from "@anthropic-ai/sdk/resources/messages/messages";
 import type { InputImage, ModelAnswer } from "../types.js";
+import { getDefaultModelForProvider } from "../registry/providers.js";
 import { base64ByteLength, shrinkImageToMaxBytes } from "../util/image.js";
 
 export async function askClaude(
   prompt: string,
-  model = "claude-sonnet-4-5-20250929",
+  model = getDefaultModelForProvider("anthropic"),
   maxTokens = 1800,
   images?: InputImage[],
 ): Promise<ModelAnswer> {

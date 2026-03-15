@@ -1,8 +1,9 @@
 import OpenAI from "openai";
 import type { ResponseInput } from "openai/resources/responses/responses";
 import type { InputImage, ModelAnswer } from "../types.js";
+import { getDefaultModelForProvider } from "../registry/providers.js";
 
-export async function askOpenAI(prompt: string, model = "gpt-5.2", images?: InputImage[]): Promise<ModelAnswer> {
+export async function askOpenAI(prompt: string, model = getDefaultModelForProvider("openai"), images?: InputImage[]): Promise<ModelAnswer> {
   try {
     const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 

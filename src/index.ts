@@ -12,15 +12,13 @@ import { makeRunDir } from "./util/runDir.js";
 import { readTextIfExists, writeText, writeJson } from "./util/io.js";
 import { loadImageAsBase64 } from "./util/image.js";
 import { bundleSpiceIncludes } from "./util/spiceIncludes.js";
-import { askOpenAI } from "./providers/openai.js";
-import { askGrok } from "./providers/xai.js";
-import { askGemini } from "./providers/gemini.js";
-import { askClaude } from "./providers/anthropic.js";
 import { buildEnsemblePrompt, parseEnsembleOutputs } from "./ensemble.js";
 import { parseNetlist } from "./netlist/parse.js";
 import { netlistToDot } from "./netlist/graph.js";
 import { writeReportDocx } from "./report/docx.js";
 import type { InputImage, ModelAnswer, ProviderName } from "./types.js";
+import { dispatchPrompt } from "./core/providers/resolver.js";
+import { getDefaultModelForProvider } from "./registry/providers.js";
 import { runBatch } from "./runBatch.js";
 import { startUiServer } from "./ui/server.js";
 import { mergeRunConfig, readRunConfig } from "./util/runConfig.js";
@@ -90,17 +88,13 @@ async function askSingleProvider(args: {
   model: string;
   image?: InputImage;
 }): Promise<ModelAnswer> {
-  const images = args.image ? [args.image] : undefined;
-  switch (args.provider) {
-    case "openai":
-      return askOpenAI(args.prompt, args.model, images);
-    case "xai":
-      return askGrok(args.prompt, args.model, images);
-    case "google":
-      return askGemini(args.prompt, args.model, images);
-    case "anthropic":
-      return askClaude(args.prompt, args.model, 1200, images);
-  }
+  return dispatchPrompt({
+    provider: args.provider,
+    prompt: args.prompt,
+    model: args.model,
+    images: args.image ? [args.image] : undefined,
+    maxTokens: args.provider === "anthropic" ? 1200 : undefined,
+  });
 }
 
 type BaselineNetlist = { text?: string; sourcePath?: string };
@@ -207,10 +201,10 @@ program
     false,
   )
   .option("--outdir <path>", "Output directory root", "runs")
-  .option("--openai-model <name>", "OpenAI model", "gpt-5.2")
-  .option("--grok-model <name>", "xAI Grok model", "grok-4")
-  .option("--gemini-model <name>", "Gemini model", "gemini-2.5-flash")
-  .option("--claude-model <name>", "Claude model", "claude-sonnet-4-5-20250929")
+  .option("--openai-model <name>", "OpenAI model", getDefaultModelForProvider("openai"))
+  .option("--grok-model <name>", "xAI Grok model", getDefaultModelForProvider("xai"))
+  .option("--gemini-model <name>", "Gemini model", getDefaultModelForProvider("google"))
+  .option("--claude-model <name>", "Claude model", getDefaultModelForProvider("anthropic"))
   .action(async (opts) => {
     try {
       const cfg = opts.config ? await readRunConfig(String(opts.config)) : undefined;
@@ -262,6 +256,7 @@ program
         claudeModel: merged?.claudeModel ?? opts.claudeModel,
         enabledProviders: merged?.enabledProviders,
         allowPrompts: Boolean(opts.prompts),
+        subcktIntegration: (merged as any)?.subcktIntegration,
       });
 
       console.log(chalk.green("Done."));
@@ -276,6 +271,11 @@ program
         (result.outputs.schematicSvg ? " + schematic.svg" : "");
       console.log(schematicLine);
       if (result.outputs.baselineImage) console.log(`- ${result.outputs.baselineImage}`);
+      if (result.outputs.subcktManifestPath) console.log(`- ${result.outputs.subcktManifestPath} (SUBCKT manifest)`);
+      if (result.outputs.patchedCirPath) console.log(`- ${result.outputs.patchedCirPath} (patched netlist with .include)`);
+      if (result.outputs.subcktLibPaths?.length) {
+        for (const p of result.outputs.subcktLibPaths) console.log(`- ${p} (.lib)`);
+      }
     } catch (e: any) {
       console.error(chalk.red(String(e?.message ?? e)));
       process.exitCode = 2;
@@ -304,10 +304,10 @@ program
   .command("chat")
   .description("Interactive chat REPL (supports OpenAI/xAI/Gemini/Claude or full ensemble per turn).")
   .option("--provider <name>", "Provider: openai|xai|google|anthropic|ensemble", "openai")
-  .option("--openai-model <name>", "OpenAI model", "gpt-5.2")
-  .option("--grok-model <name>", "xAI Grok model", "grok-4")
-  .option("--gemini-model <name>", "Gemini model", "gemini-2.5-flash")
-  .option("--claude-model <name>", "Claude model", "claude-sonnet-4-5-20250929")
+  .option("--openai-model <name>", "OpenAI model", getDefaultModelForProvider("openai"))
+  .option("--grok-model <name>", "xAI Grok model", getDefaultModelForProvider("xai"))
+  .option("--gemini-model <name>", "Gemini model", getDefaultModelForProvider("google"))
+  .option("--claude-model <name>", "Claude model", getDefaultModelForProvider("anthropic"))
   .option("--baseline-netlist <path>", "Optional SPICE netlist baseline context")
   .option("--baseline-image <path>", "Optional schematic screenshot image (png/jpg/webp)")
   .option("--max-history <n>", "Max prior turns to include in each prompt", "10")
@@ -366,11 +366,11 @@ program
 
     let currentProvider: ChatProvider = provider;
     const models = {
-      openai: String(opts.openaiModel ?? "gpt-5.2"),
-      xai: String(opts.grokModel ?? "grok-4"),
-      google: String(opts.geminiModel ?? "gemini-2.5-flash"),
-      anthropic: String(opts.claudeModel ?? "claude-sonnet-4-5-20250929"),
-      ensemble: String(opts.claudeModel ?? "claude-sonnet-4-5-20250929"),
+      openai: String(opts.openaiModel ?? getDefaultModelForProvider("openai")),
+      xai: String(opts.grokModel ?? getDefaultModelForProvider("xai")),
+      google: String(opts.geminiModel ?? getDefaultModelForProvider("google")),
+      anthropic: String(opts.claudeModel ?? getDefaultModelForProvider("anthropic")),
+      ensemble: String(opts.claudeModel ?? getDefaultModelForProvider("anthropic")),
     } as const;
 
     const systemPreamble =
@@ -640,10 +640,10 @@ program
         const images = baselineImage ? [baselineImage] : undefined;
 
         const fanoutAnswers = await Promise.all<ModelAnswer>([
-          askOpenAI(prompt, models.openai, images),
-          askGrok(prompt, models.xai, images),
-          askGemini(prompt, models.google, images),
-          askClaude(prompt, models.anthropic, 1200, images),
+          dispatchPrompt({ provider: "openai", prompt, model: models.openai, images }),
+          dispatchPrompt({ provider: "xai", prompt, model: models.xai, images }),
+          dispatchPrompt({ provider: "google", prompt, model: models.google, images }),
+          dispatchPrompt({ provider: "anthropic", prompt, model: models.anthropic, images, maxTokens: 1200 }),
         ]);
 
         const ensemblePrompt = buildEnsemblePrompt({
@@ -655,7 +655,13 @@ program
           answers: fanoutAnswers,
         });
 
-        const ensemble = await askClaude(ensemblePrompt, models.ensemble, 4800, images);
+        const ensemble = await dispatchPrompt({
+          provider: "anthropic",
+          prompt: ensemblePrompt,
+          model: models.ensemble,
+          images,
+          maxTokens: 4800,
+        });
 
         if (opts.save) {
           const dir = await ensureRunDir();
@@ -735,6 +741,162 @@ program
       turns.push({ user: userMessage, assistant: assistantText, provider: currentProvider, model, ts });
     }
   });
+
+// ---------------------------------------------------------------------------
+// subckt-lib  — generate, refine, or validate ngspice-compatible .SUBCKT files
+// ---------------------------------------------------------------------------
+
+{
+  const { createSubckt } = await import("./subckt/create.js");
+  const { refineSubckt } = await import("./subckt/refine.js");
+  const { validateLibText } = await import("./subckt/validate/validate.js");
+
+  const subcktLib = new Command("subckt-lib").description(
+    "Generate, refine, or validate ngspice-compatible .SUBCKT library files using AI.",
+  );
+
+  subcktLib
+    .command("create")
+    .description("Generate a .SUBCKT model from a datasheet and/or notes.")
+    .requiredOption("--component <name>", "Component name or part number (e.g. 4N35, LM358)")
+    .option("--manufacturer <name>", "Manufacturer name (context for AI)")
+    .option("--part-number <pn>", "Manufacturer part number")
+    .option("--pdf <path>", "Local datasheet PDF path")
+    .option("--datasheet-url <url>", "Datasheet URL (fetched with SSRF protection)")
+    .option("--notes <text>", "Free-text notes / extra context about the component")
+    .option("--pins <json>", "Known pin map as JSON array, e.g. '[{\"pinOrder\":1,\"pinName\":\"A\"}]'")
+    .option(
+      "--abstraction <level>",
+      "behavioral | macro | datasheet_constrained",
+      "behavioral",
+    )
+    .option("--outdir <path>", "Output root directory", "subckt_runs")
+    .option("--no-smoke-test", "Skip ngspice smoke test")
+    .option("--provider <name>", "AI provider for both steps (anthropic|openai|xai|google)", "anthropic")
+    .option("--extraction-provider <name>", "Override provider for fact extraction")
+    .option("--synthesis-provider <name>", "Override provider for model synthesis")
+    .option("--model <name>", "Model override for both steps")
+    .option("--extraction-model <name>", "Model override for fact extraction")
+    .option("--synthesis-model <name>", "Model override for synthesis")
+    .action(async (opts) => {
+      try {
+        let knownPinMap: { pinOrder: number; pinName: string }[] | undefined;
+        if (opts.pins) {
+          try { knownPinMap = JSON.parse(opts.pins); }
+          catch { console.error(chalk.red("--pins: invalid JSON")); process.exitCode = 2; return; }
+        }
+
+        const out = await createSubckt({
+          componentName: opts.component,
+          manufacturer: opts.manufacturer,
+          partNumber: opts.partNumber,
+          datasheetPdfPath: opts.pdf,
+          datasheetUrl: opts.datasheetUrl,
+          userNotes: opts.notes,
+          knownPinMap,
+          abstractionLevel: (opts.abstraction ?? "behavioral") as any,
+          outdir: opts.outdir,
+          runSmokeTest: opts.smokeTest !== false,
+          extractionProvider: (opts.extractionProvider ?? opts.provider ?? "anthropic") as any,
+          synthesisProvider: (opts.synthesisProvider ?? opts.provider ?? "anthropic") as any,
+          extractionModel: opts.extractionModel ?? opts.model,
+          synthesisModel: opts.synthesisModel ?? opts.model,
+          log: console.log,
+        });
+
+        if (out.warnings.length) {
+          for (const w of out.warnings) console.warn(chalk.yellow(w));
+        }
+        const statusColor = out.status === "succeeded" ? chalk.green : chalk.yellow;
+        console.log(statusColor(`\nStatus: ${out.status}`));
+        console.log(chalk.cyan(`Run dir: ${out.runDir}`));
+        if (out.outputs.libPath) console.log(`- ${out.outputs.libPath}`);
+        if (out.outputs.kicadNotesMdPath) console.log(`- ${out.outputs.kicadNotesMdPath}`);
+        if (out.outputs.validationJsonPath) console.log(`- ${out.outputs.validationJsonPath}`);
+        if (out.status === "failed") process.exitCode = 2;
+      } catch (e: any) {
+        console.error(chalk.red(String(e?.message ?? e)));
+        process.exitCode = 2;
+      }
+    });
+
+  subcktLib
+    .command("refine")
+    .description("Refine or repair an existing .SUBCKT model file.")
+    .requiredOption("--model <path>", "Existing .lib or .cir model file to refine")
+    .option("--component <name>", "Component name (defaults to filename stem)")
+    .option("--pdf <path>", "Updated datasheet PDF path")
+    .option("--datasheet-url <url>", "Updated datasheet URL")
+    .option("--notes <text>", "Additional notes")
+    .option("--force-resynth", "Re-synthesize even if existing model passes validation")
+    .option("--outdir <path>", "Output root directory", "subckt_runs")
+    .option("--no-smoke-test", "Skip ngspice smoke test")
+    .option("--provider <name>", "AI provider (anthropic|openai|xai|google)", "anthropic")
+    .option("--model-override <name>", "Model name override")
+    .action(async (opts) => {
+      try {
+        const out = await refineSubckt({
+          existingModelPath: opts.model,
+          componentName: opts.component,
+          datasheetPdfPath: opts.pdf,
+          datasheetUrl: opts.datasheetUrl,
+          userNotes: opts.notes,
+          forceResynthesis: Boolean(opts.forceResynth),
+          outdir: opts.outdir,
+          runSmokeTest: opts.smokeTest !== false,
+          provider: (opts.provider ?? "anthropic") as any,
+          model: opts.modelOverride,
+          log: console.log,
+        });
+
+        if (out.warnings.length) {
+          for (const w of out.warnings) console.warn(chalk.yellow(w));
+        }
+        const statusColor = out.status === "succeeded" ? chalk.green : chalk.yellow;
+        console.log(statusColor(`\nStatus: ${out.status}`));
+        console.log(chalk.cyan(`Run dir: ${out.runDir}`));
+        if (out.resynthesized) console.log(chalk.cyan("Model was re-synthesized."));
+        if (out.status === "failed") process.exitCode = 2;
+      } catch (e: any) {
+        console.error(chalk.red(String(e?.message ?? e)));
+        process.exitCode = 2;
+      }
+    });
+
+  subcktLib
+    .command("validate")
+    .description("Statically validate (and optionally smoke-test) a .SUBCKT model file.")
+    .requiredOption("--model <path>", "Model file (.lib or .cir) to validate")
+    .option("--component <name>", "Expected model name for consistency checks")
+    .option("--outdir <path>", "Output root directory for run artefacts", "subckt_runs")
+    .option("--no-smoke-test", "Skip ngspice smoke test")
+    .action(async (opts) => {
+      try {
+        const { makeSubcktRunDir } = await import("./subckt/runDir.js");
+        const componentName = opts.component ?? path.basename(String(opts.model), path.extname(String(opts.model)));
+        const runDir = await makeSubcktRunDir(componentName, opts.outdir ?? "subckt_runs");
+        const libText = await fs.readFile(String(opts.model), "utf-8");
+        const result = await validateLibText(libText, componentName, runDir, {
+          runSmokeTest: opts.smokeTest !== false,
+          log: console.log,
+        });
+
+        const statusColor = result.status === "syntax-valid" ? chalk.green : chalk.yellow;
+        console.log(statusColor(`\nStatus: ${result.status}`));
+        console.log(chalk.cyan(`Run dir: ${runDir}`));
+        for (const issue of result.issues) {
+          const col = issue.severity === "critical" || issue.severity === "high" ? chalk.red : chalk.yellow;
+          console.log(col(`  [${issue.severity.toUpperCase()}] ${issue.code}: ${issue.message}`));
+        }
+        if (result.status === "failed-validation") process.exitCode = 2;
+      } catch (e: any) {
+        console.error(chalk.red(String(e?.message ?? e)));
+        process.exitCode = 2;
+      }
+    });
+
+  program.addCommand(subcktLib);
+}
 
 program.parseAsync(process.argv).catch((err) => {
   console.error(chalk.red(String(err?.stack ?? err)));

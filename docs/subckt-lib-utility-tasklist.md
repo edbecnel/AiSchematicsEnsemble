@@ -9,33 +9,33 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase A — Scope, terminology, and output contract
 
-- [ ] Approve the utility architecture in [docs/subckt-lib-utility-architecture.md](docs/subckt-lib-utility-architecture.md)
-- [ ] Confirm MVP scope for create vs refine vs validate flows
-- [ ] Define the output contract for:
-  - [ ] `generated.lib`
-  - [ ] `generated.model.json`
-  - [ ] `validation.json`
-  - [ ] `kicad-notes.md`
+- [x] Approve the utility architecture in [docs/subckt-lib-utility-architecture.md](docs/subckt-lib-utility-architecture.md)
+- [x] Confirm MVP scope for create vs refine vs validate flows
+- [x] Define the output contract for:
+  - [x] `generated.lib`
+  - [x] `generated.model.json`
+  - [x] `validation.json`
+  - [x] `kicad-notes.md`
   - [ ] integrated generated `.lib` report deliverables
   - [ ] integrated `subckt-manifest.json`
   - [ ] integrated updated `.cir` output
   - [ ] report packaging rules for generated `.lib` files plus updated emitted `.cir`
-- [ ] Define canonical entities and types:
-  - [ ] `SubcktLibRequest`
-  - [ ] `ExtractedComponentFact`
-  - [ ] `SubcktPinDefinition`
-  - [ ] `SubcktCandidate`
-  - [ ] `SubcktValidationResult`
-  - [ ] `SubcktLibResult`
-- [ ] Decide the MVP abstraction levels to support:
-  - [ ] `behavioral`
-  - [ ] `macro`
-  - [ ] `datasheet_constrained`
-- [ ] Define validation status vocabulary:
-  - [ ] syntax-valid
-  - [ ] syntax-valid with warnings
-  - [ ] needs manual review
-  - [ ] failed validation
+- [x] Define canonical entities and types:
+  - [x] `SubcktLibRequest`
+  - [x] `ExtractedComponentFact`
+  - [x] `SubcktPinDefinition`
+  - [x] `SubcktCandidate`
+  - [x] `SubcktValidationResult`
+  - [x] `SubcktLibResult`
+- [x] Decide the MVP abstraction levels to support:
+  - [x] `behavioral`
+  - [x] `macro`
+  - [x] `datasheet_constrained`
+- [x] Define validation status vocabulary:
+  - [x] syntax-valid
+  - [x] syntax-valid with warnings
+  - [x] needs manual review
+  - [x] failed validation
 
 ### Phase A guardrails
 
@@ -44,14 +44,14 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase B — Local utility skeleton
 
-- [ ] Add a new utility module area under a path such as `src/subckt/`
-- [ ] Add entrypoints for:
-  - [ ] `subckt-lib create`
-  - [ ] `subckt-lib refine`
-  - [ ] `subckt-lib validate`
-- [ ] Add CLI argument parsing for component name, PDF path, datasheet URL, notes, existing model path, and output directory
-- [ ] Add run/output directory creation for SUBCKT utility runs
-- [ ] Add request/result persistence mirroring the main run traceability style
+- [x] Add a new utility module area under a path such as `src/subckt/`
+- [x] Add entrypoints for:
+  - [x] `subckt-lib create`
+  - [x] `subckt-lib refine`
+  - [x] `subckt-lib validate`
+- [x] Add CLI argument parsing for component name, PDF path, datasheet URL, notes, existing model path, and output directory
+- [x] Add run/output directory creation for SUBCKT utility runs
+- [x] Add request/result persistence mirroring the main run traceability style
 
 ### Phase B guardrails
 
@@ -60,21 +60,21 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase C — Artifact ingestion and datasheet preprocessing
 
-- [ ] Accept PDF datasheet input
-- [ ] Accept datasheet URL input
-- [ ] Accept free-text notes input
-- [ ] Accept optional existing `.lib` / `.cir` model input
-- [ ] Fetch remote datasheet artifacts from allowed URLs
-- [ ] Extract text from PDF artifacts
-- [ ] Store extracted text and artifact metadata
-- [ ] Persist original source URL in request/artifact metadata when applicable
-- [ ] Identify candidate datasheet sections for:
-  - [ ] pinout
-  - [ ] electrical characteristics
-  - [ ] absolute maximum ratings
-  - [ ] operating conditions
-  - [ ] timing/transfer behavior
-- [ ] Add fallback behavior for poor or partial extraction
+- [x] Accept PDF datasheet input
+- [x] Accept datasheet URL input
+- [x] Accept free-text notes input
+- [x] Accept optional existing `.lib` / `.cir` model input
+- [x] Fetch remote datasheet artifacts from allowed URLs
+- [x] Extract text from PDF artifacts
+- [x] Store extracted text and artifact metadata
+- [x] Persist original source URL in request/artifact metadata when applicable
+- [x] Identify candidate datasheet sections for:
+  - [x] pinout
+  - [x] electrical characteristics
+  - [x] absolute maximum ratings
+  - [x] operating conditions
+  - [x] timing/transfer behavior
+- [x] Add fallback behavior for poor or partial extraction
 
 ### Phase C guardrails
 
@@ -84,12 +84,12 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase C.5 — Datasheet URL safety and fetch policy
 
-- [ ] Restrict datasheet URL fetching to allowed protocols, preferably `https:`
-- [ ] Reject localhost, loopback, RFC1918, link-local, and metadata-service targets
-- [ ] Add DNS/IP validation before remote fetch
-- [ ] Add remote fetch timeout and maximum size limits
-- [ ] Validate returned content type and fail safely on non-document responses
-- [ ] Store fetch failure reasons for review/debugging
+- [x] Restrict datasheet URL fetching to allowed protocols, preferably `https:`
+- [x] Reject localhost, loopback, RFC1918, link-local, and metadata-service targets
+- [x] Add DNS/IP validation before remote fetch
+- [x] Add remote fetch timeout and maximum size limits
+- [x] Validate returned content type and fail safely on non-document responses
+- [x] Store fetch failure reasons for review/debugging
 
 ### Phase C.5 guardrails
 
@@ -97,14 +97,14 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase D — Structured component fact extraction
 
-- [ ] Add a canonical extracted-facts schema
-- [ ] Extract component identity facts
-- [ ] Extract pin facts
-- [ ] Extract supply and operating-range facts
-- [ ] Extract threshold/transfer/timing facts where available
-- [ ] Extract limitations and unknowns explicitly
-- [ ] Persist extracted facts as JSON and Markdown
-- [ ] Add confidence values and evidence references for extracted facts
+- [x] Add a canonical extracted-facts schema
+- [x] Extract component identity facts
+- [x] Extract pin facts
+- [x] Extract supply and operating-range facts
+- [x] Extract threshold/transfer/timing facts where available
+- [x] Extract limitations and unknowns explicitly
+- [x] Persist extracted facts as JSON and Markdown
+- [x] Add confidence values and evidence references for extracted facts
 
 ### Phase D guardrails
 
@@ -113,14 +113,14 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase E — Model synthesis
 
-- [ ] Add prompt/profile templates for SUBCKT generation
-- [ ] Generate a first candidate `.SUBCKT` from extracted facts
-- [ ] Normalize `.SUBCKT` naming and `.ENDS` naming
-- [ ] Normalize comments and assumptions section formatting
-- [ ] Preserve declared pin order in a canonical pin list
-- [ ] Support at least one behavioral-model template for common analog/digital blocks
-- [ ] Support at least one datasheet-constrained generation path
-- [ ] Persist raw generation output and normalized candidate output
+- [x] Add prompt/profile templates for SUBCKT generation
+- [x] Generate a first candidate `.SUBCKT` from extracted facts
+- [x] Normalize `.SUBCKT` naming and `.ENDS` naming
+- [x] Normalize comments and assumptions section formatting
+- [x] Preserve declared pin order in a canonical pin list
+- [x] Support at least one behavioral-model template for common analog/digital blocks
+- [x] Support at least one datasheet-constrained generation path
+- [x] Persist raw generation output and normalized candidate output
 
 ### Phase E guardrails
 
@@ -129,14 +129,14 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase F — ngspice compatibility and model validation
 
-- [ ] Add static validation rules for `.SUBCKT` structure
-- [ ] Check `.SUBCKT` / `.ENDS` consistency
-- [ ] Check pin-count consistency
-- [ ] Check for obviously unsupported or invalid syntax
-- [ ] Add warning classification by severity
-- [ ] Add optional `ngspice` smoke-test generation
-- [ ] If `ngspice` is available, run validation/smoke tests and capture logs
-- [ ] Persist `validation.json` and optional smoke-test outputs
+- [x] Add static validation rules for `.SUBCKT` structure
+- [x] Check `.SUBCKT` / `.ENDS` consistency
+- [x] Check pin-count consistency
+- [x] Check for obviously unsupported or invalid syntax
+- [x] Add warning classification by severity
+- [x] Add optional `ngspice` smoke-test generation
+- [x] If `ngspice` is available, run validation/smoke tests and capture logs
+- [x] Persist `validation.json` and optional smoke-test outputs
 
 ### Phase F guardrails
 
@@ -145,13 +145,13 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase G — KiCad-oriented output and usability
 
-- [ ] Generate `kicad-notes.md`
-- [ ] Include suggested `Spice_Model` value
-- [ ] Include symbol pin mapping guidance
-- [ ] Include warnings when symbol pin order may differ from datasheet pin order
-- [ ] Include example subcircuit invocation syntax where helpful
+- [x] Generate `kicad-notes.md`
+- [x] Include suggested `Spice_Model` value
+- [x] Include symbol pin mapping guidance
+- [x] Include warnings when symbol pin order may differ from datasheet pin order
+- [x] Include example subcircuit invocation syntax where helpful
 - [ ] Include example testbench notes for bench or sim verification
-- [ ] Include notes for how generated `.lib` files should be referenced from emitted netlists when used in Ensemble integration
+- [x] Include notes for how generated `.lib` files should be referenced from emitted netlists when used in Ensemble integration
 
 ### Phase G guardrails
 
@@ -159,15 +159,15 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase H — Shared provider architecture integration
 
-- [ ] Route SUBCKT utility provider calls through the same registry + adapter + policy path as the main platform
-- [ ] Reuse canonical artifact and prompt message structures where practical
+- [x] Route SUBCKT utility provider calls through the same registry + adapter + policy path as the main platform
+- [x] Reuse canonical artifact and prompt message structures where practical
 - [ ] Reuse credential/BYOK/custom-endpoint handling where practical
 - [ ] Reuse server-side policy enforcement for hosted execution
-- [ ] Define provider roles for:
-  - [ ] fact extraction
-  - [ ] model synthesis
-  - [ ] judge/repair
-- [ ] Define integration config shared with Ensemble runs for `disabled`, `manual`, and `auto_detect` modes
+- [x] Define provider roles for:
+  - [x] fact extraction
+  - [x] model synthesis
+  - [x] judge/repair
+- [x] Define integration config shared with Ensemble runs for `disabled`, `manual`, and `auto_detect` modes
 
 ### Phase H guardrails
 
@@ -175,13 +175,13 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase H.5 — Ensemble integration, manual-first
 
-- [ ] Add a manual integration mode where the user specifies components that need generated SUBCKT models
-- [ ] Allow per-component datasheet PDF or datasheet URL in the Ensemble UI/config
-- [ ] Generate required `.lib` files before final run packaging
-- [ ] Update the emitted `.cir` output to reference the generated `.lib` files
-- [ ] Include the generated `.lib` files and updated emitted `.cir` as report output deliverables, not only as side artifacts
-- [ ] Add integrated report content describing generated models, assumptions, and validation status
-- [ ] Emit a `subckt-manifest.json` in run outputs
+- [x] Add a manual integration mode where the user specifies components that need generated SUBCKT models
+- [x] Allow per-component datasheet PDF or datasheet URL in the Ensemble UI/config
+- [x] Generate required `.lib` files before final run packaging
+- [x] Update the emitted `.cir` output to reference the generated `.lib` files
+- [x] Include the generated `.lib` files and updated emitted `.cir` as report output deliverables, not only as side artifacts
+- [x] Add integrated report content describing generated models, assumptions, and validation status
+- [x] Emit a `subckt-manifest.json` in run outputs
 
 ### Phase H.5 guardrails
 
@@ -190,12 +190,12 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase I — Refine and repair workflow
 
-- [ ] Accept an existing `.lib` or `.cir` as input
-- [ ] Detect likely compatibility issues
-- [ ] Rewrite obvious syntax incompatibilities where safe
-- [ ] Reconcile model pin names/order against extracted facts
-- [ ] Output a repaired `.lib` plus a change report
-- [ ] Add a “why changed” summary to the model report
+- [x] Accept an existing `.lib` or `.cir` as input
+- [x] Detect likely compatibility issues
+- [x] Rewrite obvious syntax incompatibilities where safe
+- [x] Reconcile model pin names/order against extracted facts
+- [x] Output a repaired `.lib` plus a change report
+- [x] Add a "why changed" summary to the model report
 
 ### Phase I guardrails
 
@@ -216,10 +216,10 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase J.5 — Fully automated Ensemble integration
 
-- [ ] Detect candidate symbols/components that appear to be missing usable SUBCKT/model information
-- [ ] Define eligibility thresholds for when auto-generation is allowed
-- [ ] Generate and validate models automatically when `auto_detect` mode is enabled
-- [ ] Skip or warn on low-confidence candidates instead of silently patching them
+- [x] Detect candidate symbols/components that appear to be missing usable SUBCKT/model information
+- [x] Define eligibility thresholds for when auto-generation is allowed
+- [x] Generate and validate models automatically when `auto_detect` mode is enabled
+- [x] Skip or warn on low-confidence candidates instead of silently patching them
 - [ ] Patch the final emitted `.cir` output and package generated `.lib` files
 - [ ] Include the patched emitted `.cir` and generated `.lib` files in report output deliverables for auto-generated interventions
 - [ ] Include explicit report disclosure for every auto-generated model intervention
@@ -243,7 +243,7 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Phase L — Quality, benchmarks, and expansion
 
-- [ ] Add benchmark cases for representative components
+- [x] Add benchmark cases for representative components
 - [ ] Add evaluation cases for pinout correctness and syntax validity
 - [ ] Add evaluation cases for datasheet-constrained behavior plausibility
 - [ ] Add support for additional component classes as confidence grows
@@ -255,14 +255,14 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 ## Completion gates
 
-- [ ] A user can generate a `.SUBCKT` library from a component name and optional PDF or datasheet URL
-- [ ] The utility outputs a usable `ngspice`-friendly `.lib`
-- [ ] The output includes assumptions, limitations, and warnings
-- [ ] Validation results are produced separately from generation output
-- [ ] The utility can optionally run smoke tests when `ngspice` is available
-- [ ] KiCad-oriented notes are generated for symbol/model hookup
-- [ ] The utility reuses the shared provider, policy, and credential architecture
-- [ ] The utility can integrate into Ensemble runs in manual mode and emit `.lib` files plus an updated `.cir`
-- [ ] When integrated into Ensemble runs, the generated `.lib` files and updated emitted `.cir` are part of report output deliverables
+- [x] A user can generate a `.SUBCKT` library from a component name and optional PDF or datasheet URL
+- [x] The utility outputs a usable `ngspice`-friendly `.lib`
+- [x] The output includes assumptions, limitations, and warnings
+- [x] Validation results are produced separately from generation output
+- [x] The utility can optionally run smoke tests when `ngspice` is available
+- [x] KiCad-oriented notes are generated for symbol/model hookup
+- [x] The utility reuses the shared provider, policy, and credential architecture
+- [x] The utility can integrate into Ensemble runs in manual mode and emit `.lib` files plus an updated `.cir`
+- [x] When integrated into Ensemble runs, the generated `.lib` files and updated emitted `.cir` are part of report output deliverables
 - [ ] Fully automated integration, if enabled, remains opt-in and explicitly disclosed in the report
-- [ ] Outputs remain traceable enough for manual engineering review
+- [x] Outputs remain traceable enough for manual engineering review

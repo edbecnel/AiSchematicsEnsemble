@@ -1,7 +1,8 @@
 import { GoogleGenAI } from "@google/genai";
 import type { InputImage, ModelAnswer } from "../types.js";
+import { getDefaultModelForProvider } from "../registry/providers.js";
 
-export async function askGemini(prompt: string, model = "gemini-2.5-flash", images?: InputImage[]): Promise<ModelAnswer> {
+export async function askGemini(prompt: string, model = getDefaultModelForProvider("google"), images?: InputImage[]): Promise<ModelAnswer> {
   try {
     const client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 

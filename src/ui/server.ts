@@ -8,6 +8,7 @@ import { execa } from "execa";
 import Busboy from "busboy";
 import archiver from "archiver";
 
+import { getDefaultModelForProvider } from "../registry/providers.js";
 import { runBatch, type RunBatchOptions, type RunBatchResult, type RunBatchLogger } from "../runBatch.js";
 
 export type UiServerOptions = {
@@ -333,10 +334,10 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     outdir: args.defaultOutdir,
     schematicDpi: 600,
     bundleIncludes: false,
-    openaiModel: "gpt-5.2",
-    grokModel: "grok-4",
-    geminiModel: "gemini-2.5-flash",
-    claudeModel: "claude-sonnet-4-5-20250929",
+    openaiModel: getDefaultModelForProvider("openai"),
+    grokModel: getDefaultModelForProvider("xai"),
+    geminiModel: getDefaultModelForProvider("google"),
+    claudeModel: getDefaultModelForProvider("anthropic"),
     enabledProviders: ["openai", "xai", "google", "anthropic"],
   };
 
@@ -612,7 +613,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
             <input id="useOpenai" type="checkbox" checked /> OpenAI model
           </label>
           <div style="display: flex; gap: 8px; align-items: center">
-            <input id="openaiModel" type="text" value="gpt-5.2" />
+            <input id="openaiModel" type="text" value="${defaults.openaiModel}" />
             <button type="button" id="openaiKeyBtn" title="Enter OPENAI_API_KEY">Keys</button>
           </div>
         </div>
@@ -621,7 +622,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
             <input id="useXai" type="checkbox" checked /> Grok model
           </label>
           <div style="display: flex; gap: 8px; align-items: center">
-            <input id="grokModel" type="text" value="grok-4" />
+            <input id="grokModel" type="text" value="${defaults.grokModel}" />
             <button type="button" id="xaiKeyBtn" title="Enter XAI_API_KEY">Keys</button>
           </div>
         </div>
@@ -630,7 +631,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
             <input id="useGemini" type="checkbox" checked /> Gemini model
           </label>
           <div style="display: flex; gap: 8px; align-items: center">
-            <input id="geminiModel" type="text" value="gemini-2.5-flash" />
+            <input id="geminiModel" type="text" value="${defaults.geminiModel}" />
             <button type="button" id="geminiKeyBtn" title="Enter GEMINI_API_KEY">Keys</button>
           </div>
         </div>
@@ -639,7 +640,7 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
             <input id="useAnthropic" type="checkbox" checked /> Claude model
           </label>
           <div style="display: flex; gap: 8px; align-items: center">
-            <input id="claudeModel" type="text" value="claude-sonnet-4-5-20250929" />
+            <input id="claudeModel" type="text" value="${defaults.claudeModel}" />
             <button type="button" id="anthropicKeyBtn" title="Enter ANTHROPIC_API_KEY">Keys</button>
           </div>
         </div>

@@ -66,6 +66,46 @@ const RunConfigSchema = z
     geminiModel: z.string().optional(),
     claudeModel: z.string().optional(),
     enabledProviders: z.array(z.enum(["openai", "xai", "google", "anthropic"])).optional(),
+    /**
+     * Optional SUBCKT integration config.
+     * When mode is "manual", generates .lib files for the listed components.
+     */
+    subcktIntegration: z
+      .object({
+        mode: z.enum(["disabled", "manual", "auto_detect"]),
+        components: z
+          .array(
+            z
+              .object({
+                refdes: z.string().optional(),
+                symbolName: z.string().optional(),
+                componentName: z.string(),
+                manufacturer: z.string().optional(),
+                datasheetUrl: z.string().optional(),
+                datasheetPdfPath: z.string().optional(),
+                abstractionLevel: z.enum(["behavioral", "macro", "datasheet_constrained"]).optional(),
+              })
+              .strict(),
+          )
+          .optional(),
+        requireValidationPass: z.boolean().optional(),
+        includeLibsInReport: z.boolean().optional(),
+        patchFinalCir: z.boolean().optional(),
+        providerRoles: z
+          .object({
+            factExtraction: z
+              .object({ provider: z.enum(["openai", "xai", "google", "anthropic"]), model: z.string().optional() })
+              .optional(),
+            modelSynthesis: z
+              .object({ provider: z.enum(["openai", "xai", "google", "anthropic"]), model: z.string().optional() })
+              .optional(),
+            judgeRepair: z
+              .object({ provider: z.enum(["openai", "xai", "google", "anthropic"]), model: z.string().optional() })
+              .optional(),
+          })
+          .optional(),
+      })
+      .optional(),
   })
   .strict();
 
@@ -194,6 +234,7 @@ export async function readRunConfig(configPath: string): Promise<RunConfig> {
     geminiModel: cleanString(cfg.geminiModel),
     claudeModel: cleanString(cfg.claudeModel),
     enabledProviders: Array.isArray(cfg.enabledProviders) && cfg.enabledProviders.length ? cfg.enabledProviders : undefined,
+    subcktIntegration: cfg.subcktIntegration,
   };
 }
 

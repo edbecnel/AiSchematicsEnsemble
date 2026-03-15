@@ -19,6 +19,7 @@ This checklist is the active implementation driver for the open-provider migrati
 ## Related documents
 
 - Main design reference: [docs/open-provider-architecture-plan.md](docs/open-provider-architecture-plan.md)
+- Phase 0 regression/defaults baseline: [open-provider-phase0-baseline.md](open-provider-phase0-baseline.md)
 - SUBCKT utility design: [docs/subckt-lib-utility-architecture.md](docs/subckt-lib-utility-architecture.md)
 - SUBCKT utility implementation checklist: [docs/subckt-lib-utility-tasklist.md](docs/subckt-lib-utility-tasklist.md)
 
@@ -46,16 +47,16 @@ This checklist is the active implementation driver for the open-provider migrati
 
 These are the recommended first implementation steps across the main open-provider plan and the related SUBCKT utility plan.
 
-1. [ ] Finalize the Phase 0 architecture baseline and canonical entity vocabulary in [docs/open-provider-architecture-plan.md](docs/open-provider-architecture-plan.md)
-2. [ ] Freeze current behavior with regression scenarios for OpenAI, Anthropic, Gemini, and xAI so refactors can be validated safely
-3. [ ] Extract shared canonical types and schemas into reusable modules, including `DispatchRequest`, `RawProviderResponse`, `NormalizedPromptMessage`, `NormalizedAttachment`, `NormalizedFinding`, and `SynthesisOutput`
-4. [ ] Create the shared provider adapter contract plus `getProviderAdapter(protocol)`
-5. [ ] Settle the Gemini adapter strategy before broader provider refactors
-6. [ ] Implement the first protocol adapters: `OpenAICompatibleAdapter`, `AnthropicNativeAdapter`, and `AnthropicCompatibleAdapter`
-7. [ ] Create the provider registry, model catalog, stable model aliases, and canonical resolved-provider shape
-8. [ ] Implement the dispatch and normalization foundation, including `DispatchStatus`, normalized provider errors, raw-result persistence, and structured/fallback parsing
-9. [ ] Implement the prompt/artifact pipeline plus persistence foundations, including reusable analysis-context structure, storage abstractions, and hosted API skeletons
-10. [ ] Implement the end-to-end orchestration path centered on `executeRun()` before starting major UI work or deeper SUBCKT utility coding
+1. [x] Finalize the Phase 0 architecture baseline and canonical entity vocabulary in [docs/open-provider-architecture-plan.md](docs/open-provider-architecture-plan.md)
+2. [x] Freeze current behavior with regression scenarios for OpenAI, Anthropic, Gemini, and xAI so refactors can be validated safely
+3. [x] Extract shared canonical types and schemas into reusable modules, including `DispatchRequest`, `RawProviderResponse`, `NormalizedPromptMessage`, `NormalizedAttachment`, `NormalizedFinding`, and `SynthesisOutput`
+4. [x] Create the shared provider adapter contract plus `getProviderAdapter(protocol)`
+5. [x] Settle the Gemini adapter strategy before broader provider refactors
+6. [x] Implement the first protocol adapters: `OpenAICompatibleAdapter`, `AnthropicNativeAdapter`, and `AnthropicCompatibleAdapter`
+7. [x] Create the provider registry, model catalog, stable model aliases, and canonical resolved-provider shape
+8. [x] Implement the dispatch and normalization foundation, including `DispatchStatus`, normalized provider errors, raw-result persistence, and structured/fallback parsing
+9. [x] Implement the prompt/artifact pipeline plus persistence foundations, including reusable analysis-context structure, storage abstractions, and hosted API skeletons
+10. [x] Implement the end-to-end orchestration path centered on `executeRun()` before starting major UI work or deeper SUBCKT utility coding
 
 ### What to start immediately after the first 10
 
@@ -66,11 +67,11 @@ These are the recommended first implementation steps across the main open-provid
 
 - [x] Approve the target architecture in [docs/open-provider-architecture-plan.md](docs/open-provider-architecture-plan.md)
 - [x] Confirm MVP scope vs deferred items
-- [ ] Freeze current provider behavior with regression test scenarios for OpenAI, Anthropic, Gemini, and xAI
-- [ ] Document current provider/model defaults from [src/index.ts](src/index.ts) and [src/util/runConfig.ts](src/util/runConfig.ts)
-- [x] Accept breaking changes to legacy outputs for this migration; no backward-compatibility requirement for `final.md`, `final.cir`, `final.json`, or `report.docx`
+- [x] Freeze current provider behavior with regression test scenarios for OpenAI, Anthropic, Gemini, and xAI in [open-provider-phase0-baseline.md](open-provider-phase0-baseline.md)
+- [x] Document current provider/model defaults from [src/index.ts](src/index.ts) and [src/util/runConfig.ts](src/util/runConfig.ts) in [open-provider-phase0-baseline.md](open-provider-phase0-baseline.md)
+- [x] Accept breaking changes to legacy outputs for this migration for `final.md`, `final.cir`, and `final.json`, while preserving all information currently emitted in `report.docx`
 - [x] Defer automated migration rules/support for existing config files and saved run folders unless a later requirement makes them necessary
-- [x] Define the initial canonical internal entities (proposed definitions: [open-provider-architecture-plan.md](open-provider-architecture-plan.md#phase0-canonical-entities)):
+- [x] Approve the initial canonical internal entity definitions (Phase 0 vocabulary only; not code implementation) in [open-provider-architecture-plan.md](open-provider-architecture-plan.md#phase0-canonical-entities):
   - [x] `ProviderDefinition`
   - [x] `UserProviderCredential`
   - [x] `Run`
@@ -86,27 +87,27 @@ These are the recommended first implementation steps across the main open-provid
 ## Phase 1 — Core provider abstraction inside current repo
 
 - [ ] Replace the narrow `ProviderName` pattern in [src/types.ts](src/types.ts) with extensible provider/protocol types
-- [ ] Extract shared types and schemas into reusable packages/modules now, not later
-- [ ] Introduce `ProviderProtocol`, `BillingMode`, `ProviderCapabilities`, and resolved-provider types
-- [ ] Add `ModelDefinition` and `ModelAlias` types
+- [x] Extract shared types and schemas into reusable packages/modules now, not later
+- [x] Introduce `ProviderProtocol`, `BillingMode`, `ProviderCapabilities`, and resolved-provider types
+- [x] Add `ModelDefinition` and `ModelAlias` types
 - [ ] Create shared canonical types now:
-  - [ ] `DispatchRequest`
-  - [ ] `RawProviderResponse`
-  - [ ] `NormalizedPromptMessage`
-  - [ ] `NormalizedAttachment`
-  - [ ] `NormalizedFinding`
-  - [ ] `SynthesisOutput`
-- [ ] Create a provider adapter contract in a shared core module
-- [ ] Add a shared adapter interface file that all protocol adapters implement
-- [ ] Add a provider adapter resolver: `getProviderAdapter(protocol)`
-- [ ] Create `OpenAICompatibleAdapter`
-- [ ] Create `AnthropicNativeAdapter`
-- [ ] Create `AnthropicCompatibleAdapter`
-- [ ] Settle the Gemini adapter strategy:
-  - [ ] decide whether Gemini is routed through a Gemini-native adapter
-  - [ ] or through the OpenAI-compatible adapter path
-- [ ] Refactor existing provider modules under a common dispatch contract
-- [ ] Remove orchestration-time provider switch logic from [src/index.ts](src/index.ts) and related run paths
+  - [x] `DispatchRequest`
+  - [x] `RawProviderResponse`
+  - [x] `NormalizedPromptMessage`
+  - [x] `NormalizedAttachment`
+  - [x] `NormalizedFinding`
+  - [x] `SynthesisOutput`
+- [x] Create a provider adapter contract in a shared core module
+- [x] Add a shared adapter interface file that all protocol adapters implement
+- [x] Add a provider adapter resolver: `getProviderAdapter(protocol)`
+- [x] Create `OpenAICompatibleAdapter`
+- [x] Create `AnthropicNativeAdapter`
+- [x] Create `AnthropicCompatibleAdapter`
+- [x] Settle the Gemini adapter strategy:
+  - [x] decide whether Gemini is routed through a Gemini-native adapter (`gemini-native` protocol using `@google/genai` SDK; not the OpenAI-compatible path)
+  - [x] or through the OpenAI-compatible adapter path (not chosen; native SDK is preferred for full feature access)
+- [x] Refactor existing provider modules under a common dispatch contract
+- [x] Remove orchestration-time provider switch logic from [src/index.ts](src/index.ts) and related run paths
 
 ### Phase 1 guardrails
 
@@ -114,27 +115,27 @@ These are the recommended first implementation steps across the main open-provid
 
 ## Phase 2 — Provider registry and model catalog
 
-- [ ] Create a provider registry module for built-in provider definitions
-- [ ] Create a model catalog for concrete model IDs
-- [ ] Add stable model aliases such as `openai.flagship`, `anthropic.flagship`, `judge.default`
-- [ ] Add capability metadata for each built-in model
+- [x] Create a provider registry module for built-in provider definitions
+- [x] Create a model catalog for concrete model IDs
+- [x] Add stable model aliases such as `openai.flagship`, `anthropic.flagship`, `judge.default`
+- [x] Add capability metadata for each built-in model
 - [ ] Add synthesis-eligible and judge-eligible flags
-- [ ] Add pricing metadata placeholders even if billing is not yet active
-- [ ] Add environment-key mapping rules for platform-owned local/dev credentials
+- [x] Add pricing metadata placeholders even if billing is not yet active
+- [x] Add environment-key mapping rules for platform-owned local/dev credentials
 - [ ] Add config migration support so existing `openaiModel`, `claudeModel`, etc. still resolve cleanly
-- [ ] Add `billingMode` and `providerScope` explicitly to provider definitions:
+- [x] Add `billingMode` and `providerScope` explicitly to provider definitions:
   - [ ] `platform_free`
-  - [ ] `platform_paid`
+  - [x] `platform_paid`
   - [ ] `user_byok`
   - [ ] `custom_endpoint`
-- [ ] Add `isFreeEligible` and `isPremiumOnly` to provider definitions
-- [ ] Add one canonical resolved-provider shape used by dispatch with:
-  - [ ] protocol
-  - [ ] base URL
-  - [ ] model
-  - [ ] auth header info
-  - [ ] capabilities
-  - [ ] billing mode
+- [x] Add `isFreeEligible` and `isPremiumOnly` to provider definitions
+- [x] Add one canonical resolved-provider shape used by dispatch with:
+  - [x] protocol
+  - [x] base URL
+  - [x] model
+  - [x] auth header info
+  - [x] capabilities
+  - [x] billing mode
 
 ### Phase 2 guardrails
 
@@ -143,25 +144,25 @@ These are the recommended first implementation steps across the main open-provid
 
 ## Phase 3 — Dispatch pipeline and normalization
 
-- [ ] Introduce a canonical `DispatchRequest`
-- [ ] Introduce a canonical `RawProviderResponse`
-- [ ] Introduce a canonical normalized result schema
-- [ ] Add `DispatchStatus` enum:
-  - [ ] `queued`
-  - [ ] `running`
-  - [ ] `succeeded`
-  - [ ] `failed`
-  - [ ] `timed_out`
-  - [ ] `cancelled`
-- [ ] Add a normalized error object for provider failures
-- [ ] Persist raw provider outputs in a provider-agnostic structure
-- [ ] Extract text from each provider response using the adapter contract
-- [ ] Add a structured result parser and a fallback tagged-section parser
-- [ ] Normalize every provider result into summary, findings, assumptions, missing info, and recommended actions
-- [ ] Add parse-quality scoring for normalized outputs
-- [ ] Add confidence-scoring hooks now, even if consensus boosting comes later
+- [x] Introduce a canonical `DispatchRequest`
+- [x] Introduce a canonical `RawProviderResponse`
+- [x] Introduce a canonical normalized result schema
+- [x] Add `DispatchStatus` enum:
+  - [x] `queued`
+  - [x] `running`
+  - [x] `succeeded`
+  - [x] `failed`
+  - [x] `timed_out`
+  - [x] `cancelled`
+- [x] Add a normalized error object for provider failures
+- [x] Persist raw provider outputs in a provider-agnostic structure
+- [x] Extract text from each provider response using the adapter contract
+- [x] Add a structured result parser and a fallback tagged-section parser
+- [x] Normalize every provider result into summary, findings, assumptions, missing info, and recommended actions
+- [x] Add parse-quality scoring for normalized outputs
+- [x] Add confidence-scoring hooks now, even if consensus boosting comes later
 - [ ] Preserve partial results when one or more providers fail
-- [ ] Add consistent error categories for auth, timeout, malformed output, unsupported attachments, and provider unavailability
+- [x] Add consistent error categories for auth, timeout, malformed output, unsupported attachments, and provider unavailability
 
 ### Phase 3 guardrails
 
@@ -169,25 +170,25 @@ These are the recommended first implementation steps across the main open-provid
 
 ## Phase 4 — Prompt package and artifact pipeline
 
-- [ ] Introduce a canonical normalized prompt/message format
-- [ ] Introduce normalized attachment references
-- [ ] Build a reusable analysis context package from uploaded/local artifacts
-- [ ] Define a stable analysis context package structure containing:
-  - [ ] user instructions
-  - [ ] extracted artifact text
-  - [ ] artifact metadata
-  - [ ] storage references
-  - [ ] system prompt profile ID
-- [ ] Persist artifact metadata separately from provider request formatting
-- [ ] Separate artifact preprocessing from provider dispatch
-- [ ] Add one prompt-profile mechanism for:
-  - [ ] analysis
-  - [ ] synthesis
-  - [ ] structured-output mode
-- [ ] Add PDF/text extraction pipeline placeholders
-- [ ] Add future-ready hooks for OCR/vision extraction models
-- [ ] Record artifact provenance in run outputs for reproducibility
-- [ ] Keep the artifact contract reusable for related workflows such as the SUBCKT utility and datasheet-ingestion flows
+- [x] Introduce a canonical normalized prompt/message format
+- [x] Introduce normalized attachment references
+- [x] Build a reusable analysis context package from uploaded/local artifacts
+- [x] Define a stable analysis context package structure containing:
+  - [x] user instructions
+  - [x] extracted artifact text
+  - [x] artifact metadata
+  - [x] storage references
+  - [x] system prompt profile ID
+- [x] Persist artifact metadata separately from provider request formatting
+- [x] Separate artifact preprocessing from provider dispatch
+- [x] Add one prompt-profile mechanism for:
+  - [x] analysis
+  - [x] synthesis
+  - [x] structured-output mode
+- [x] Add PDF/text extraction pipeline placeholders
+- [x] Add future-ready hooks for OCR/vision extraction models
+- [x] Record artifact provenance in run outputs for reproducibility
+- [x] Keep the artifact contract reusable for related workflows such as the SUBCKT utility and datasheet-ingestion flows
 
 ### Phase 4 guardrails
 
@@ -195,19 +196,19 @@ These are the recommended first implementation steps across the main open-provid
 
 ## Phase 4.5 — Persistence and hosted API foundations
 
-- [ ] Add skeletal DB schema for users, providers, runs, dispatches, results, artifacts, billing, and audit records
-- [ ] Add run/result/artifact persistence interfaces before full hosted rollout
-- [ ] Introduce object storage layout for artifacts and raw dispatch payloads
-- [ ] Add explicit storage key conventions:
-  - [ ] `projects/{projectId}/artifacts/{artifactId}/{filename}`
-  - [ ] `runs/{runId}/dispatches/{dispatchId}/request.json`
-  - [ ] `runs/{runId}/dispatches/{dispatchId}/response.json`
-  - [ ] `runs/{runId}/reports/final-report.json`
-- [ ] Add authenticated hosted API foundations before major UI work:
-  - [ ] provider APIs skeleton
-  - [ ] run APIs skeleton
-  - [ ] project/artifact APIs skeleton
-  - [ ] billing summary API skeleton
+- [x] Add skeletal DB schema for users, providers, runs, dispatches, results, artifacts, billing, and audit records
+- [x] Add run/result/artifact persistence interfaces before full hosted rollout
+- [x] Introduce object storage layout for artifacts and raw dispatch payloads
+- [x] Add explicit storage key conventions:
+  - [x] `projects/{projectId}/artifacts/{artifactId}/{filename}`
+  - [x] `runs/{runId}/dispatches/{dispatchId}/request.json`
+  - [x] `runs/{runId}/dispatches/{dispatchId}/response.json`
+  - [x] `runs/{runId}/reports/final-report.json`
+- [x] Add authenticated hosted API foundations before major UI work:
+  - [x] provider APIs skeleton
+  - [x] run APIs skeleton
+  - [x] project/artifact APIs skeleton
+  - [x] billing summary API skeleton
 - [ ] Migrate filesystem-only assumptions behind storage abstractions where needed to support later hosted rollout
 
 ### Phase 4.5 guardrails
@@ -293,18 +294,18 @@ These are the recommended first implementation steps across the main open-provid
 
 ## Phase 7.5 — End-to-end run orchestration service
 
-- [ ] Add `createRun()`
-- [ ] Add `resolveProvidersForRun()`
-- [ ] Add `buildAnalysisContext()`
-- [ ] Add `dispatchRun()`
-- [ ] Add `normalizeDispatchResults()`
-- [ ] Add optional `synthesizeRun()`
-- [ ] Add `finalizeRun()`
-- [ ] Add top-level `executeRun()` that coordinates the full run lifecycle
-- [ ] Ensure partial-success behavior is preserved end-to-end
-- [ ] Ensure synthesis failure does not mark a successful analysis run as failed
-- [ ] Leave a clean integration point for related utility stages such as manual-first SUBCKT generation and packaging
-- [ ] Preserve a packaging/report-deliverable contract so integrated SUBCKT outputs can include generated `.lib` files and updated emitted `.cir`
+- [x] Add `createRun()`
+- [x] Add `resolveProvidersForRun()`
+- [x] Add `buildAnalysisContext()`
+- [x] Add `dispatchRun()`
+- [x] Add `normalizeDispatchResults()`
+- [x] Add optional `synthesizeRun()`
+- [x] Add `finalizeRun()`
+- [x] Add top-level `executeRun()` that coordinates the full run lifecycle
+- [x] Ensure partial-success behavior is preserved end-to-end
+- [x] Ensure synthesis failure does not mark a successful analysis run as failed
+- [x] Leave a clean integration point for related utility stages such as manual-first SUBCKT generation and packaging
+- [x] Preserve a packaging/report-deliverable contract so integrated SUBCKT outputs can include generated `.lib` files and updated emitted `.cir`
 
 ### Phase 7.5 guardrails
 
@@ -459,5 +460,6 @@ These are the recommended first implementation steps across the main open-provid
 - [ ] UI uses stable backend/API contracts rather than defining its own payload shapes
 - [ ] Shared canonical types exist before major hosted/UI expansion
 - [ ] Related AI utilities, including SUBCKT generation, do not create a parallel provider/policy architecture
+- [ ] The future `report.docx` preserves all information currently generated today, even if new report sections are added
 - [ ] When SUBCKT integration is used, generated `.lib` files and updated emitted `.cir` are included in report output deliverables
 - [ ] The codebase is ready for your later full end-user model setup specification without another large architectural reset
