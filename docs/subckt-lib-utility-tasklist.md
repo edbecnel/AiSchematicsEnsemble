@@ -16,8 +16,10 @@ This checklist tracks implementation of the separate SUBCKT library utility.
   - [ ] `generated.model.json`
   - [ ] `validation.json`
   - [ ] `kicad-notes.md`
+  - [ ] integrated generated `.lib` report deliverables
   - [ ] integrated `subckt-manifest.json`
   - [ ] integrated updated `.cir` output
+  - [ ] report packaging rules for generated `.lib` files plus updated emitted `.cir`
 - [ ] Define canonical entities and types:
   - [ ] `SubcktLibRequest`
   - [ ] `ExtractedComponentFact`
@@ -177,6 +179,7 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 - [ ] Allow per-component datasheet PDF or datasheet URL in the Ensemble UI/config
 - [ ] Generate required `.lib` files before final run packaging
 - [ ] Update the emitted `.cir` output to reference the generated `.lib` files
+- [ ] Include the generated `.lib` files and updated emitted `.cir` as report output deliverables, not only as side artifacts
 - [ ] Add integrated report content describing generated models, assumptions, and validation status
 - [ ] Emit a `subckt-manifest.json` in run outputs
 
@@ -218,6 +221,7 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 - [ ] Generate and validate models automatically when `auto_detect` mode is enabled
 - [ ] Skip or warn on low-confidence candidates instead of silently patching them
 - [ ] Patch the final emitted `.cir` output and package generated `.lib` files
+- [ ] Include the patched emitted `.cir` and generated `.lib` files in report output deliverables for auto-generated interventions
 - [ ] Include explicit report disclosure for every auto-generated model intervention
 
 ### Phase J.5 guardrails
@@ -259,5 +263,6 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 - [ ] KiCad-oriented notes are generated for symbol/model hookup
 - [ ] The utility reuses the shared provider, policy, and credential architecture
 - [ ] The utility can integrate into Ensemble runs in manual mode and emit `.lib` files plus an updated `.cir`
+- [ ] When integrated into Ensemble runs, the generated `.lib` files and updated emitted `.cir` are part of report output deliverables
 - [ ] Fully automated integration, if enabled, remains opt-in and explicitly disclosed in the report
 - [ ] Outputs remain traceable enough for manual engineering review

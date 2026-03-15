@@ -304,6 +304,7 @@ These are the recommended first implementation steps across the main open-provid
 - [ ] Ensure partial-success behavior is preserved end-to-end
 - [ ] Ensure synthesis failure does not mark a successful analysis run as failed
 - [ ] Leave a clean integration point for related utility stages such as manual-first SUBCKT generation and packaging
+- [ ] Preserve a packaging/report-deliverable contract so integrated SUBCKT outputs can include generated `.lib` files and updated emitted `.cir`
 
 ### Phase 7.5 guardrails
 
@@ -458,4 +459,5 @@ These are the recommended first implementation steps across the main open-provid
 - [ ] UI uses stable backend/API contracts rather than defining its own payload shapes
 - [ ] Shared canonical types exist before major hosted/UI expansion
 - [ ] Related AI utilities, including SUBCKT generation, do not create a parallel provider/policy architecture
+- [ ] When SUBCKT integration is used, generated `.lib` files and updated emitted `.cir` are included in report output deliverables
 - [ ] The codebase is ready for your later full end-user model setup specification without another large architectural reset

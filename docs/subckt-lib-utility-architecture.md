@@ -74,7 +74,7 @@ The system returns:
 - warnings and unsupported behaviors
 - optional example testbench
 - optional KiCad usage notes for attaching the model to a symbol
-- when run as part of Ensemble, generated `.lib` files and an updated `.cir` netlist suitable for report deliverables
+- when run as part of Ensemble, generated `.lib` files and an updated `.cir` netlist included as report output deliverables, not just described in report text
 
 ---
 
@@ -105,6 +105,7 @@ Recommended integrated-Ensemble outputs:
 - `subckt_libs/*.lib`
 - updated `final.cir` or `final_with_subckts.cir`
 - `subckt-manifest.json`
+- report output deliverables that include the generated `.lib` artifacts and the updated emitted `.cir`
 - report sections summarizing generated models, assumptions, and validation status
 
 Recommended MVP model classes:
@@ -214,7 +215,7 @@ The utility should also support integration into the main AI Schematics Ensemble
 5. The system validates generated models.
 6. Valid or warning-labeled models are written to external `.lib` files.
 7. The generated `.lib` files are referenced from the emitted `.cir` output.
-8. The report includes what was auto-generated, what confidence level it had, and what still requires manual review.
+8. The report output deliverables include the generated `.lib` files and updated emitted `.cir`, and the report content explains what was auto-generated, what confidence level it had, and what still requires manual review.
 
 #### Mode 2: Partial automation
 
@@ -223,7 +224,7 @@ The utility should also support integration into the main AI Schematics Ensemble
 3. The SUBCKT utility generates and validates the models first.
 4. The resulting `.lib` files are attached to the run outputs.
 5. The Ensemble updates the emitted `.cir` output to reference the generated `.lib` files.
-6. The report includes the generated models and integration notes.
+6. The report output deliverables include the generated `.lib` files and updated emitted `.cir`, and the report content includes the generated models and integration notes.
 
 ### 7.4 Recommended rollout
 
@@ -640,6 +641,8 @@ runs/{runId}/
 
 This mirrors the project’s existing traceability style.
 
+For integrated runs, the generated `.lib` files under `subckt_libs/` and the updated emitted `final.cir` should be treated as report output deliverables/artifacts, not merely intermediate run files.
+
 ---
 
 ## 16. Safety and quality rules
@@ -680,8 +683,8 @@ This mirrors the project’s existing traceability style.
 
 - manual component-entry workflow in the run UI
 - optional datasheet upload or datasheet URL per component
-- generated `.lib` files added to run deliverables
-- updated `.cir` emitted as part of the run outputs
+- generated `.lib` files added to run deliverables and report output deliverables
+- updated `.cir` emitted as part of the run outputs and report output deliverables
 
 ### Phase D — hosted integration
 
@@ -693,7 +696,7 @@ This mirrors the project’s existing traceability style.
 
 - detect missing or unresolved model candidates from netlist/schematic context
 - generate and validate candidate models automatically when enabled
-- patch final emitted `.cir` and package external `.lib` files
+- patch final emitted `.cir` and package external `.lib` files as report output deliverables
 - clearly disclose all generated-model interventions in the report
 
 ---

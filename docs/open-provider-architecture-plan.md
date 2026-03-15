@@ -194,8 +194,8 @@ Recommended integration modes:
 
 - user explicitly identifies components needing generated models
 - user may attach a datasheet PDF or datasheet URL
-- generated `.lib` files are packaged with run outputs
-- emitted `.cir` output is updated to reference generated libraries
+- generated `.lib` files are packaged with run outputs and report output deliverables
+- emitted `.cir` output is updated to reference generated libraries and is included in report output deliverables
 
 2. `auto_detect`
 
@@ -858,7 +858,7 @@ This combined architecture is successful when:
 6. synthesis and judge stages are optional, independent, and non-catastrophic on failure
 7. local mode and hosted mode share the same dispatch and normalization contracts
 8. generated SUBCKT utility runs reuse the same provider, policy, and artifact architecture
-9. manual-first SUBCKT integration can emit generated `.lib` files plus an updated `.cir` in run deliverables
+9. manual-first SUBCKT integration can emit generated `.lib` files plus an updated `.cir` in run deliverables and report output deliverables
 10. the design leaves room for your later full spec for user-managed model definitions without another major rewrite
 
 ---
@@ -935,6 +935,7 @@ When integrated into an Ensemble run:
 
 - generated models should remain as separate `.lib` artifacts
 - the emitted `.cir` should reference those artifacts
+- the report output deliverables should include those generated `.lib` artifacts and the updated emitted `.cir` themselves
 - the report should disclose what was generated, how it was validated, and what requires manual review
 
 ### A.5 Reuse the same security posture for remote fetches
