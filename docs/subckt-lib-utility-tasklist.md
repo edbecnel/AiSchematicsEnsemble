@@ -7,6 +7,12 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 - This checklist is the implementation driver for the SUBCKT utility.
 - The design reference is [docs/subckt-lib-utility-architecture.md](docs/subckt-lib-utility-architecture.md).
 
+## Related documents
+
+- Main provider migration checklist: [docs/open-provider-phased-tasklist.md](docs/open-provider-phased-tasklist.md)
+- Interactive refinement checklist: [docs/interactive-run-refinement-tasklist.md](docs/interactive-run-refinement-tasklist.md)
+- Merged cross-tasklist priority queue: [docs/merged-cross-tasklist-priority-queue.md](docs/merged-cross-tasklist-priority-queue.md)
+
 ## Phase A — Scope, terminology, and output contract
 
 - [x] Approve the utility architecture in [docs/subckt-lib-utility-architecture.md](docs/subckt-lib-utility-architecture.md)
@@ -150,7 +156,7 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 - [x] Include symbol pin mapping guidance
 - [x] Include warnings when symbol pin order may differ from datasheet pin order
 - [x] Include example subcircuit invocation syntax where helpful
-- [ ] Include example testbench notes for bench or sim verification
+- [x] Include example testbench notes for bench or sim verification
 - [x] Include notes for how generated `.lib` files should be referenced from emitted netlists when used in Ensemble integration
 
 ### Phase G guardrails
@@ -161,7 +167,7 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 
 - [x] Route SUBCKT utility provider calls through the same registry + adapter + policy path as the main platform
 - [x] Reuse canonical artifact and prompt message structures where practical
-- [ ] Reuse credential/BYOK/custom-endpoint handling where practical
+- [x] Reuse credential/BYOK/custom-endpoint handling where practical
 - [ ] Reuse server-side policy enforcement for hosted execution
 - [x] Define provider roles for:
   - [x] fact extraction

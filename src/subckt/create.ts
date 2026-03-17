@@ -19,9 +19,12 @@ import { extractComponentFacts } from "./extract/factExtractor.js";
 import { synthesizeSubcktModel } from "./synthesis/synthesize.js";
 import { validateSubcktCandidate } from "./validate/validate.js";
 import { makeSubcktRunDir } from "./runDir.js";
+import type { ProviderName } from "../types.js";
 import type {
   SubcktLibRequest,
   SubcktLibResult,
+  SubcktProviderRoleConfig,
+  SubcktProviderTarget,
   SubcktRunRecord,
   SubcktRunStatus,
 } from "./types.js";
@@ -37,17 +40,29 @@ export interface CreateSubcktInput extends SubcktLibRequest {
    */
   outdir?: string;
   /** Provider for fact extraction. Defaults to "anthropic". */
-  extractionProvider?: "openai" | "xai" | "google" | "anthropic";
+  extractionProvider?: ProviderName;
   /** Provider for model synthesis. Defaults to "anthropic". */
-  synthesisProvider?: "openai" | "xai" | "google" | "anthropic";
+  synthesisProvider?: ProviderName;
   /** Model override for fact extraction. */
   extractionModel?: string;
   /** Model override for synthesis. */
   synthesisModel?: string;
+  /** Shared role-based provider/model overrides reused from main run config. */
+  providerRoles?: SubcktProviderRoleConfig;
   /** Run ngspice smoke test when available. Defaults to true. */
   runSmokeTest?: boolean;
   /** Optional logger. */
   log?: (msg: string) => void;
+}
+
+function resolveProviderTarget(
+  explicitProvider: ProviderName | undefined,
+  explicitModel: string | undefined,
+  roleTarget: SubcktProviderTarget | undefined,
+): SubcktProviderTarget | undefined {
+  const provider = roleTarget?.provider ?? explicitProvider;
+  const model = roleTarget?.model ?? explicitModel;
+  return provider || model ? { provider: provider ?? "anthropic", model } : undefined;
 }
 
 export interface CreateSubcktOutput {
@@ -74,7 +89,7 @@ export interface CreateSubcktOutput {
 // ---------------------------------------------------------------------------
 
 function buildKicadNotesMd(result: SubcktLibResult): string {
-  const { modelName, pins, validation, assumptions, limitations } = result;
+  const { modelName, pins, validation, assumptions, limitations, smokeTestNetlist } = result;
   const lines: string[] = [
     `# KiCad Integration Notes: ${modelName}`,
     "",
@@ -108,6 +123,51 @@ function buildKicadNotesMd(result: SubcktLibResult): string {
     `X1 ${pins.map((p) => p.pinName.toLowerCase()).join(" ")} ${modelName}`,
     "```",
   );
+
+  lines.push(
+    "",
+    "## Example Testbench / Bench Verification Notes",
+    "",
+    "Use a simple verification setup before relying on the model in a larger design:",
+    "",
+    "- Start with a minimal testbench containing only the power rails, the generated `.SUBCKT`, and one representative stimulus source.",
+    "- Drive one input or control pin at a time and verify that the output polarity, threshold behavior, and pin roles match the datasheet expectations.",
+    "- Confirm supply current, output swing, and any obvious clamp/limit behavior against the datasheet or bench measurements.",
+    "- If the device is timing-sensitive, run at least one transient test with realistic rise/fall times rather than only ideal DC checks.",
+    "- Treat mismatches as either a pin-mapping problem or a model-limitation problem first; do not assume the surrounding circuit is wrong.",
+  );
+
+  if (validation.ngspiceRan) {
+    lines.push(
+      "",
+      "### Smoke-test artifacts",
+      "",
+      validation.smokeTestPassed
+        ? "- An `ngspice` smoke test was executed successfully for this generated model."
+        : "- An `ngspice` smoke test was attempted but did not pass cleanly; review the validation issues and log output.",
+      "- Review `validation.json` for the structured validation result.",
+      "- If present in the run folder, use `smoke-test.cir` as the starting point for further simulation refinement.",
+      "- If present in the run folder, review `smoke-test.log` for parser/runtime diagnostics.",
+    );
+  } else {
+    lines.push(
+      "",
+      "### Smoke-test follow-up",
+      "",
+      "- `ngspice` smoke testing was not executed in this run.",
+      "- Create a minimal transient or DC operating-point testbench and verify the generated model before integrating it into a larger schematic.",
+    );
+  }
+
+  if (smokeTestNetlist?.trim()) {
+    lines.push(
+      "",
+      "### Example smoke-test netlist excerpt",
+      "```spice",
+      smokeTestNetlist.trim(),
+      "```",
+    );
+  }
 
   lines.push("", "## Validation Summary", "");
   lines.push(`**Status:** \`${validation.status}\``);
@@ -197,6 +257,16 @@ export async function createSubckt(input: CreateSubcktInput): Promise<CreateSubc
   const requestJsonPath = await persistRunRecord(runRecord, runDir);
 
   const outputPaths: CreateSubcktOutput["outputs"] = { requestJsonPath };
+  const extractionTarget = resolveProviderTarget(
+    input.extractionProvider,
+    input.extractionModel,
+    input.providerRoles?.factExtraction,
+  );
+  const synthesisTarget = resolveProviderTarget(
+    input.synthesisProvider,
+    input.synthesisModel,
+    input.providerRoles?.modelSynthesis,
+  );
 
   try {
     // --- Phase C: Artifact ingestion ---
@@ -214,8 +284,8 @@ export async function createSubckt(input: CreateSubcktInput): Promise<CreateSubc
         identifiedSections: ingestResult.artifacts.flatMap((a) =>
           a.sections.map((s) => ({ kind: s.kind, heading: s.heading, text: s.text })),
         ),
-        provider: input.extractionProvider,
-        model: input.extractionModel,
+        provider: extractionTarget?.provider,
+        model: extractionTarget?.model,
         log,
       },
       runDir,
@@ -232,8 +302,8 @@ export async function createSubckt(input: CreateSubcktInput): Promise<CreateSubc
         request,
         facts: factResult.facts,
         pins: factResult.inferredPins,
-        provider: input.synthesisProvider,
-        model: input.synthesisModel,
+        provider: synthesisTarget?.provider,
+        model: synthesisTarget?.model,
         log,
       },
       runDir,

@@ -10,6 +10,7 @@ import archiver from "archiver";
 
 import { getDefaultModelForProvider } from "../registry/providers.js";
 import { runBatch, type RunBatchOptions, type RunBatchResult, type RunBatchLogger } from "../runBatch.js";
+import { ApiService } from "../core/api/handlers.js";
 
 export type UiServerOptions = {
   host?: string;
@@ -454,6 +455,26 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
     .themeSelect option { background: var(--bg); color: var(--fg); }
     html[data-theme="light"] .themeSelect { color-scheme: light; }
     html[data-theme="dark"] .themeSelect { color-scheme: dark; }
+    /* Phase 9 — badge, provider catalog, and run-results card styles */
+    .badge { display: inline-flex; align-items: center; padding: 2px 7px; border-radius: 999px; font-size: 11px; font-weight: 600; border: 1px solid; white-space: nowrap; }
+    .badge-synthesis { background: rgba(59,130,246,.15); color: #3b82f6; border-color: rgba(59,130,246,.3); }
+    .badge-judge { background: rgba(245,158,11,.15); color: #d97706; border-color: rgba(245,158,11,.3); }
+    .badge-free { background: rgba(22,163,74,.15); color: #16a34a; border-color: rgba(22,163,74,.3); }
+    .badge-premium { background: rgba(139,92,246,.15); color: #8b5cf6; border-color: rgba(139,92,246,.3); }
+    .badge-vision { background: rgba(99,102,241,.15); color: #6366f1; border-color: rgba(99,102,241,.3); }
+    .badge-ok { background: rgba(22,163,74,.15); color: #16a34a; border-color: rgba(22,163,74,.3); }
+    .badge-err { background: rgba(220,38,38,.15); color: #dc2626; border-color: rgba(220,38,38,.3); }
+    .badge-warn { background: rgba(245,158,11,.15); color: #d97706; border-color: rgba(245,158,11,.3); }
+    .badge-pending { background: rgba(107,114,128,.15); color: var(--muted); border-color: rgba(107,114,128,.3); }
+    .badge-byok { background: rgba(22,163,74,.15); color: #16a34a; border-color: rgba(22,163,74,.3); }
+    .providerRow { display: flex; align-items: center; gap: 8px; padding: 7px 4px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    .providerRow:last-child { border-bottom: none; }
+    .providerGroup + .providerGroup { margin-top: 10px; }
+    .providerGroupLabel { font-weight: 600; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 4px; }
+    .statusCard { border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; flex: 1 1 180px; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+    .statusCardGrid { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 8px; }
+    .statusCard .provider-name { font-weight: 600; font-size: 13px; }
+    .statusCard .provider-model { font-size: 11px; color: var(--muted); }
   </style>
 </head>
 <body>
@@ -663,6 +684,31 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
         </div>
         <pre id="log"></pre>
       </div>
+
+      <!-- Phase 9: Provider catalog card -->
+      <div class="card" style="grid-column: 1 / -1;">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; font-weight:700; margin-bottom:10px;">
+          Provider Catalog
+          <div style="display:flex; gap:8px;">
+            <button type="button" id="addEndpointBtn" style="padding:6px 10px; font-size:13px;">+ Custom endpoint</button>
+            <button type="button" id="refreshProvidersBtn" style="padding:6px 10px; font-size:13px;">Refresh</button>
+          </div>
+        </div>
+        <div id="providersBody" class="hint">Loading provider catalog&#8230;</div>
+      </div>
+
+      <!-- Phase 9: Run Results card — hidden until a run completes -->
+      <div class="card" style="grid-column: 1 / -1; display:none;" id="resultsCard">
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; font-weight:700; margin-bottom:10px;">
+          Run Results
+          <button type="button" id="retryBtn" style="padding:6px 10px; font-size:13px;">Retry (restore config)</button>
+        </div>
+        <div id="providerStatusList" class="statusCardGrid"></div>
+        <div id="synthesisSection" style="display:none; margin-top:14px;">
+          <div style="font-weight:700; margin-bottom:6px;">Synthesis &amp; Consensus</div>
+          <pre id="synthesisText" style="max-height:400px;"></pre>
+        </div>
+      </div>
     </div>
   </main>
 
@@ -685,6 +731,29 @@ function htmlPage(args: { defaultOutdir: string; cwd: string }): string {
         <button type="button" class="primary" id="keysSaveBtn">Save</button>
         <span class="hint" id="keysStatus" style="align-self:center;"></span>
       </div>
+    </div>
+  </div>
+
+  <!-- Phase 9: Custom endpoint add/edit/test/delete modal -->
+  <div id="endpointModal" style="position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:rgba(0,0,0,.55); padding:16px; z-index:1000;">
+    <div style="width:min(640px,100%); background:rgba(20,20,20,.92); border:1px solid rgba(127,127,127,.35); border-radius:14px; padding:14px;">
+      <div style="display:flex; justify-content:space-between; align-items:baseline; gap:12px; margin-bottom:12px;">
+        <div style="font-weight:700;" id="endpointModalTitle">Custom Endpoint</div>
+        <button type="button" id="endpointModalClose" title="Close" style="padding:8px 10px;">&#x2715;</button>
+      </div>
+      <form onsubmit="return false">
+        <div class="row"><label>Display name</label><input id="epName" type="text" placeholder="My endpoint" /></div>
+        <div class="row"><label>Base URL</label><input id="epUrl" type="text" placeholder="https://api.example.com/v1" /></div>
+        <div class="row"><label>Protocol</label><select id="epProtocol" style="padding:8px 10px; border-radius:8px; border:1px solid rgba(127,127,127,.4); background:rgba(127,127,127,.06); color:inherit;"><option value="openai-compatible">OpenAI-compatible</option><option value="anthropic-compatible">Anthropic-compatible</option></select></div>
+        <div class="row"><label>API Key</label><div style="display:flex;gap:8px;align-items:center;"><input id="epKey" type="password" placeholder="(optional)" autocomplete="off" /><button type="button" id="epShowKey">Show</button></div></div>
+      </form>
+      <div class="actions" style="margin-top:12px;">
+        <button type="button" class="primary" id="epSaveBtn">Save</button>
+        <button type="button" id="epProbeBtn">Test</button>
+        <button type="button" id="epDeleteBtn" style="display:none; color:#dc2626; border-color:rgba(220,38,38,.4);">Delete</button>
+        <button type="button" id="endpointModalCancel">Cancel</button>
+      </div>
+      <span id="epStatus" class="hint" style="display:block; margin-top:8px;"></span>
     </div>
   </div>
 
@@ -762,6 +831,9 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
   const envBackupsDir = path.resolve(cwd, ".env_backups");
 
   const allowedRunDirs = new Set<string>();
+
+  // Phase 8.5 — ApiService for /api/v1/ routes
+  const apiService = new ApiService({ cwd, defaultRunsDir: defaultOutdir });
 
   const server = http.createServer(async (req, res) => {
     try {
@@ -1633,6 +1705,157 @@ export async function startUiServer(opts: UiServerOptions = {}): Promise<{ url: 
         }
 
         void zip.finalize();
+        return;
+      }
+
+      // =====================================================================
+      // Phase 8.5 — /api/v1/ dispatch block
+      //
+      // All route segments are matched manually using simple string ops so
+      // we stay framework-free.  Each handler delegates to ApiService and
+      // always ends with `sendJson(res, status, result); return;`.
+      //
+      // Route table:
+      //   GET    /api/v1/providers
+      //   GET    /api/v1/providers/:providerId
+      //   POST   /api/v1/credentials
+      //   DELETE /api/v1/credentials/:credentialId
+      //   POST   /api/v1/custom-endpoints
+      //   PUT    /api/v1/custom-endpoints/:endpointId
+      //   DELETE /api/v1/custom-endpoints/:endpointId
+      //   POST   /api/v1/custom-endpoints/:endpointId/probe
+      //   POST   /api/v1/runs
+      //   GET    /api/v1/runs
+      //   GET    /api/v1/runs/:runId
+      //   GET    /api/v1/runs/:runId/results
+      //   POST   /api/v1/runs/:runId/retry
+      //   POST   /api/v1/projects
+      //   GET    /api/v1/projects
+      //   GET    /api/v1/projects/:projectId
+      //   POST   /api/v1/projects/:projectId/artifacts
+      //   GET    /api/v1/projects/:projectId/artifacts/:artifactId
+      //   GET    /api/v1/billing/summary
+      // =====================================================================
+      if (pathname.startsWith("/api/v1/")) {
+        const v1 = pathname.slice("/api/v1/".length); // strip prefix
+        const seg = v1.split("/");                     // segments
+
+        // --- providers ---
+        if (method === "GET" && v1 === "providers") {
+          sendJson(res, 200, apiService.listProviders());
+          return;
+        }
+        if (method === "GET" && seg[0] === "providers" && seg.length === 2) {
+          sendJson(res, 200, apiService.getProvider(decodeURIComponent(seg[1]!)));
+          return;
+        }
+
+        // --- credentials ---
+        if (method === "POST" && v1 === "credentials") {
+          const rawBody = await readRequestBody(req);
+          const body = JSON.parse(rawBody.toString("utf-8") || "{}");
+          sendJson(res, 200, apiService.addByok(body));
+          return;
+        }
+        if (method === "DELETE" && seg[0] === "credentials" && seg.length === 2) {
+          sendJson(res, 200, apiService.deleteByok(decodeURIComponent(seg[1]!)));
+          return;
+        }
+
+        // --- custom-endpoints ---
+        if (method === "POST" && v1 === "custom-endpoints") {
+          const rawBody = await readRequestBody(req);
+          const body = JSON.parse(rawBody.toString("utf-8") || "{}");
+          sendJson(res, 200, apiService.addCustomEndpoint(body));
+          return;
+        }
+        if (method === "PUT" && seg[0] === "custom-endpoints" && seg.length === 2) {
+          const rawBody = await readRequestBody(req);
+          const body = JSON.parse(rawBody.toString("utf-8") || "{}");
+          sendJson(res, 200, apiService.updateCustomEndpoint(decodeURIComponent(seg[1]!), body));
+          return;
+        }
+        if (method === "DELETE" && seg[0] === "custom-endpoints" && seg.length === 2) {
+          sendJson(res, 200, apiService.deleteCustomEndpoint(decodeURIComponent(seg[1]!)));
+          return;
+        }
+        if (method === "POST" && seg[0] === "custom-endpoints" && seg[2] === "probe") {
+          sendJson(res, 200, apiService.probeCustomEndpoint(decodeURIComponent(seg[1]!)));
+          return;
+        }
+
+        // --- runs ---
+        if (method === "POST" && v1 === "runs") {
+          const rawBody = await readRequestBody(req);
+          const body = JSON.parse(rawBody.toString("utf-8") || "{}");
+          const result = await apiService.createRun(body, { outdir: defaultOutdir });
+          // Register the new run dir as allowed for legacy file access
+          if (result.ok) allowedRunDirs.add(path.resolve(cwd, defaultOutdir));
+          sendJson(res, result.ok ? 201 : 422, result);
+          return;
+        }
+        if (method === "GET" && v1 === "runs") {
+          sendJson(res, 200, await apiService.listRuns());
+          return;
+        }
+        if (method === "GET" && seg[0] === "runs" && seg.length === 2) {
+          const result = await apiService.getRun(decodeURIComponent(seg[1]!));
+          sendJson(res, result.ok ? 200 : 404, result);
+          return;
+        }
+        if (method === "GET" && seg[0] === "runs" && seg[2] === "results") {
+          const result = await apiService.getRunResults(decodeURIComponent(seg[1]!));
+          sendJson(res, result.ok ? 200 : 404, result);
+          return;
+        }
+        if (method === "POST" && seg[0] === "runs" && seg[2] === "retry") {
+          const result = await apiService.retryRun(decodeURIComponent(seg[1]!));
+          sendJson(res, result.ok ? 200 : 404, result);
+          return;
+        }
+
+        // --- projects ---
+        if (method === "POST" && v1 === "projects") {
+          const rawBody = await readRequestBody(req);
+          const body = JSON.parse(rawBody.toString("utf-8") || "{}");
+          sendJson(res, 201, apiService.createProject(body));
+          return;
+        }
+        if (method === "GET" && v1 === "projects") {
+          sendJson(res, 200, apiService.listProjects());
+          return;
+        }
+        if (method === "GET" && seg[0] === "projects" && seg.length === 2) {
+          const result = apiService.getProject(decodeURIComponent(seg[1]!));
+          sendJson(res, result.ok ? 200 : 404, result);
+          return;
+        }
+
+        // --- artifacts ---
+        if (method === "POST" && seg[0] === "projects" && seg[2] === "artifacts" && seg.length === 3) {
+          const rawBody = await readRequestBody(req);
+          const body = JSON.parse(rawBody.toString("utf-8") || "{}");
+          const result = apiService.createArtifact(decodeURIComponent(seg[1]!), body);
+          sendJson(res, result.ok ? 201 : 422, result);
+          return;
+        }
+        if (method === "GET" && seg[0] === "projects" && seg[2] === "artifacts" && seg.length === 4) {
+          const result = apiService.getArtifact(
+            decodeURIComponent(seg[1]!),
+            decodeURIComponent(seg[3]!),
+          );
+          sendJson(res, result.ok ? 200 : 404, result);
+          return;
+        }
+
+        // --- billing ---
+        if (method === "GET" && v1 === "billing/summary") {
+          sendJson(res, 200, apiService.getBillingSummary());
+          return;
+        }
+
+        // Unmatched /api/v1/ route → 404 with proper envelope
+        sendJson(res, 404, { ok: false, error: { code: "NOT_FOUND", message: `Unknown API route: ${method} ${pathname}` } });
         return;
       }
 

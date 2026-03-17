@@ -16,7 +16,8 @@ import { netlistToDot } from "./netlist/graph.js";
 import { writeReportDocx } from "./report/docx.js";
 import { writeReportPdf } from "./report/pdf.js";
 import { convertDocxToPdfViaLibreOffice } from "./report/docxToPdf.js";
-import type { InputImage, ModelAnswer, ProviderName, TaggedImagePath, TaggedInputImage } from "./types.js";
+import { BUILTIN_PROVIDER_NAMES, isBuiltinProviderName } from "./types.js";
+import type { BuiltinProviderName, InputImage, ModelAnswer, ProviderName, TaggedImagePath, TaggedInputImage } from "./types.js";
 import type { SubcktIntegrationConfig } from "./subckt/types.js";
 import { runSubcktIntegration } from "./subckt/integration/integrate.js";
 
@@ -234,19 +235,19 @@ function extFromMimeType(mimeType: string | undefined): string {
   return ".bin";
 }
 
-const ALL_PROVIDERS: ProviderName[] = ["openai", "xai", "google", "anthropic"];
+const ALL_PROVIDERS: BuiltinProviderName[] = [...BUILTIN_PROVIDER_NAMES];
 
-function providersWithApiKeysFromEnv(): ProviderName[] {
+function providersWithApiKeysFromEnv(): BuiltinProviderName[] {
   return ALL_PROVIDERS.filter((provider) => providerHasConfiguredEnvKey(provider));
 }
 
-function normalizeEnabledProviders(enabled?: ProviderName[]): ProviderName[] {
+function normalizeEnabledProviders(enabled?: ProviderName[]): BuiltinProviderName[] {
   // If the caller did not explicitly choose providers, default to those that have keys.
   // This avoids noisy warnings (and failed calls) for providers the user isn't using.
   if (enabled === undefined) return providersWithApiKeysFromEnv();
-  const set = new Set<ProviderName>();
+  const set = new Set<BuiltinProviderName>();
   for (const p of enabled) {
-    if (p === "openai" || p === "xai" || p === "google" || p === "anthropic") set.add(p);
+    if (isBuiltinProviderName(p)) set.add(p);
   }
   return Array.from(set);
 }
@@ -262,6 +263,8 @@ function modelForProvider(provider: ProviderName, opts: RunBatchOptions): string
     case "anthropic":
       return opts.claudeModel ?? getDefaultModelForProvider(provider);
   }
+
+  return getDefaultModelForProvider(provider);
 }
 
 async function askProvider(args: {

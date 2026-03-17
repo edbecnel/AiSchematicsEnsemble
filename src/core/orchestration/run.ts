@@ -1,5 +1,5 @@
 /**
- * Phase 7.5 — End-to-end run orchestration service
+ * Phase 7.5 / Phase 8 — End-to-end run orchestration service
  *
  * This module is the single coordinator for the full run lifecycle.
  * All entrypoints (CLI, UI server, future hosted API) should call
@@ -7,7 +7,7 @@
  *
  * Lifecycle:
  *   createRun → buildAnalysisContext → dispatchRun → normalizeDispatchResults
- *     → synthesizeRun (optional, fault-tolerant) → finalizeRun
+ *     → synthesizeRun (Phase 8: consensus → judge → synthesis, fault-tolerant) → finalizeRun
  *
  * Guardrails:
  *   - Partial success is always preserved: if some providers fail, the run
@@ -29,6 +29,7 @@ import { buildPromptMessagesWithProfile } from "../prompts/profiles.js";
 import { promptTextFromMessages } from "../providers/adapter.js";
 import { dispatchPrompt } from "../providers/resolver.js";
 import { dispatchResultFromRaw, normalizeDispatchResult } from "../dispatch/normalizer.js";
+import { runSynthesisPipeline } from "../synthesis/pipeline.js";
 import { createLocalStorage, type StorageBackend } from "../storage/store.js";
 import {
   dispatchRequestKey,
@@ -54,8 +55,10 @@ import { writeReportDocx } from "../../report/docx.js";
 import { writeReportPdf } from "../../report/pdf.js";
 import { convertDocxToPdfViaLibreOffice } from "../../report/docxToPdf.js";
 import { makeRunDir } from "../../util/runDir.js";
+import { BUILTIN_PROVIDER_NAMES } from "../../types.js";
 import type {
   AnalysisContextPackage,
+  BuiltinProviderName,
   DispatchStatus,
   InputImage,
   NormalizedDispatchResult,
@@ -65,6 +68,7 @@ import type {
   RunDispatch,
   RunResult,
   RunStatus,
+  SynthesisPipelineResult,
   TaggedImagePath,
   TaggedInputImage,
 } from "../../types.js";
@@ -119,12 +123,8 @@ export interface ExecuteRunOutput {
   context: AnalysisContextPackage;
   dispatches: RunDispatch[];
   results: NormalizedProviderResult[];
-  synthesis: {
-    attempted: boolean;
-    succeeded: boolean;
-    result?: NormalizedProviderResult;
-    error?: string;
-  };
+  /** Phase 8 synthesis/consensus/judge pipeline result. */
+  synthesis: SynthesisPipelineResult;
   finalMarkdown: string;
   spiceNetlist: string;
   circuitJson: string;
@@ -159,7 +159,7 @@ function defaultLogger(): RunLogger {
 // Helpers
 // ---------------------------------------------------------------------------
 
-const ALL_PROVIDERS: ProviderName[] = ["openai", "xai", "google", "anthropic"];
+const ALL_PROVIDERS: BuiltinProviderName[] = [...BUILTIN_PROVIDER_NAMES];
 
 function newId(): string {
   return crypto.randomUUID();
@@ -176,6 +176,8 @@ function modelForProvider(provider: ProviderName, input: ExecuteRunInput): strin
     case "google":   return input.geminiModel  ?? getDefaultModelForProvider(provider);
     case "anthropic":return input.claudeModel  ?? getDefaultModelForProvider(provider);
   }
+
+  return getDefaultModelForProvider(provider);
 }
 
 // ---------------------------------------------------------------------------
@@ -314,6 +316,14 @@ export async function dispatchRun(args: {
     } catch (err) {
       const latencyMs = Date.now() - t0;
       const errMsg = err instanceof Error ? err.message : String(err);
+      const raw = {
+        provider,
+        model,
+        text: "",
+        status: "failed" as const,
+        error: errMsg,
+        latencyMs,
+      };
       rawResult = {
         provider,
         model,
@@ -329,6 +339,9 @@ export async function dispatchRun(args: {
         latencyMs,
         error: rawResult.error,
       };
+      try {
+        await storage.writeJson(dispatchResponseKey(run.id, dispatchId), raw);
+      } catch { /* non-fatal */ }
       logger.error(`  ${provider} (${model}): failed — ${errMsg}`);
     }
 
@@ -340,13 +353,41 @@ export async function dispatchRun(args: {
   const dispatches: RunDispatch[] = [];
   const rawResults: NormalizedDispatchResult[] = [];
 
-  for (const s of settled) {
+  for (let i = 0; i < settled.length; i += 1) {
+    const s = settled[i];
     if (s.status === "fulfilled") {
       dispatches.push(s.value.dispatch);
       rawResults.push(s.value.raw);
     } else {
-      // Job itself threw (shouldn't happen — inner try/catch handles it)
-      logger.error(`Unexpected dispatch job rejection: ${String(s.reason)}`);
+      const provider = providers[i] ?? "unknown-provider";
+      const model = providers[i] ? modelForProvider(providers[i], input) : "";
+      const dispatchId = newId();
+      const message = `Unexpected dispatch job rejection: ${String(s.reason)}`;
+
+      logger.error(message);
+
+      dispatches.push({
+        id: dispatchId,
+        runId: run.id,
+        providerDefinitionId: provider,
+        provider,
+        model,
+        status: "failed",
+        createdAt: isoNow(),
+        startedAt: isoNow(),
+        completedAt: isoNow(),
+        requestStorageKey: dispatchRequestKey(run.id, dispatchId),
+        responseStorageKey: dispatchResponseKey(run.id, dispatchId),
+        error: { category: "unknown", message, retryable: false },
+      });
+
+      rawResults.push({
+        provider,
+        model,
+        status: "failed",
+        text: "",
+        error: { category: "unknown", message, retryable: false },
+      });
     }
   }
 
@@ -377,9 +418,17 @@ export function normalizeDispatchResults(
 }
 
 // ---------------------------------------------------------------------------
-// synthesizeRun — optional, fault-tolerant
+// synthesizeRun — Phase 8: consensus → judge → synthesis pipeline
 // ---------------------------------------------------------------------------
 
+/**
+ * Orchestrate the Phase 8 synthesis/consensus/judge pipeline for a completed
+ * analysis run.  Delegates to runSynthesisPipeline in core/synthesis.
+ *
+ * Invariants:
+ *  - Never throws: all failures are captured in the returned SynthesisPipelineResult.
+ *  - An unsuccessful or skipped pipeline never invalidates the analysis results.
+ */
 export async function synthesizeRun(args: {
   run: Run;
   context: AnalysisContextPackage;
@@ -387,67 +436,23 @@ export async function synthesizeRun(args: {
   providers: ProviderName[];
   input: ExecuteRunInput;
   logger: RunLogger;
-}): Promise<{ attempted: boolean; succeeded: boolean; result?: NormalizedProviderResult; error?: string }> {
-  const { run, context, results, providers, input, logger } = args;
+  /** Whether to run the judge step. Default: true. */
+  enableJudge?: boolean;
+}): Promise<SynthesisPipelineResult> {
+  const { context, results, providers, input, logger } = args;
 
-  const successfulResults = results.filter((r) => r.status === "succeeded");
-  if (!successfulResults.length) {
-    return { attempted: false, succeeded: false, error: "No successful analysis results to synthesize" };
-  }
-
-  // Pick synthesis provider: prefer anthropic, then first enabled provider
-  const synthProvider: ProviderName = providers.includes("anthropic") ? "anthropic" : providers[0]!;
-  const synthModel = modelForProvider(synthProvider, input);
-  const maxTokens = synthProvider === "anthropic" ? 4800 : undefined;
-
-  logger.info(`Synthesizing with ${synthProvider} (${synthModel})...`);
-
-  const analysisAnswers = successfulResults.map((r) => ({
-    provider: r.provider,
-    model: r.model,
-    text: [
-      r.summary,
-      r.findings.map((f) => `- ${f.title}: ${f.summary}`).join("\n"),
-      r.spiceNetlist ? `\nSPICE:\n${r.spiceNetlist}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n\n"),
-  }));
-
-  const synthMessages = buildPromptMessagesWithProfile(context, "synthesis", { analysisAnswers });
-  const synthPrompt = promptTextFromMessages(synthMessages);
-
-  try {
-    const synthAnswer = await dispatchPrompt({
-      provider: synthProvider,
-      model: synthModel,
-      prompt: synthPrompt,
-      images: input.allImages,
-      maxTokens,
-      metadata: { runId: run.id, step: "synthesis" },
-    });
-
-    const rawDispatch = dispatchResultFromRaw({
-      provider: synthAnswer.provider,
-      model: synthAnswer.model,
-      text: synthAnswer.text,
-      error: synthAnswer.error,
-      raw: synthAnswer.meta?.["raw"] as unknown,
-    });
-    const result = normalizeDispatchResult(rawDispatch);
-
-    if (result.status === "failed") {
-      logger.warn(`Synthesis failed: ${result.error?.message ?? "unknown error"}`);
-      return { attempted: true, succeeded: false, result, error: result.error?.message };
-    }
-
-    logger.info(`Synthesis complete (parseQuality=${result.parseQuality})`);
-    return { attempted: true, succeeded: true, result };
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    logger.warn(`Synthesis threw: ${msg}`);
-    return { attempted: true, succeeded: false, error: msg };
-  }
+  return runSynthesisPipeline({
+    context,
+    results,
+    providers,
+    openaiModel: input.openaiModel,
+    grokModel: input.grokModel,
+    geminiModel: input.geminiModel,
+    claudeModel: input.claudeModel,
+    allImages: input.allImages,
+    enableJudge: args.enableJudge,
+    logger,
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -477,13 +482,13 @@ export async function finalizeRun(args: FinalizeRunArgs): Promise<FinalizeRunOut
 
   // Pick best outputs: prefer synthesis result, fall back to best-quality individual result
   const primary =
-    synthesis.result ??
+    synthesis.synthesis ??
     [...results]
       .filter((r) => r.status === "succeeded")
       .sort((a, b) => b.parseQuality - a.parseQuality)[0];
 
   const finalMarkdown = primary?.summary
-    ? buildFinalMarkdown(primary, results, context)
+    ? buildFinalMarkdown(primary, results, context, synthesis)
     : "(No output generated — all providers failed)";
 
   const spiceNetlist =
@@ -497,7 +502,7 @@ export async function finalizeRun(args: FinalizeRunArgs): Promise<FinalizeRunOut
   const subckt = input.subcktIntegration;
   const finalCirText = buildFinalCir(spiceNetlist, subckt);
   const finalMdText = buildFinalMd(finalMarkdown, subckt);
-  const finalJsonText = buildFinalJson(circuitJson, results);
+  const finalJsonText = buildFinalJson(circuitJson, results, synthesis);
 
   // Write text outputs via storage backend
   await Promise.all([
@@ -512,7 +517,10 @@ export async function finalizeRun(args: FinalizeRunArgs): Promise<FinalizeRunOut
     model: r.model,
     status: r.status,
     text: r.summary,
+    findings: r.findings,
     parseQuality: r.parseQuality,
+    confidenceHint: r.confidenceHint,
+    errorCategory: r.error?.category,
     error: r.error?.message,
   }));
   await storage.writeJson("answers.json", answersData);
@@ -740,31 +748,72 @@ function buildFinalMarkdown(
   primary: NormalizedProviderResult,
   all: NormalizedProviderResult[],
   _context: AnalysisContextPackage,
+  synthesis?: SynthesisPipelineResult,
 ): string {
   const lines: string[] = [
     `## Summary\n\n${primary.summary}`,
   ];
 
-  if (primary.findings.length) {
-    lines.push("\n## Findings\n");
-    for (const f of primary.findings) {
+  // Use judge-prioritized findings when available, otherwise synthesis/primary findings
+  const displayFindings =
+    synthesis?.judge?.prioritizedFindings.length
+      ? synthesis.judge.prioritizedFindings
+      : synthesis?.synthesisOutput?.findings.length
+        ? synthesis.synthesisOutput.findings
+        : primary.findings;
+
+  if (displayFindings.length) {
+    const findingLabel =
+      synthesis?.judge ? "## Prioritized Findings (Judge-Ranked)\n" : "## Findings\n";
+    lines.push(`\n${findingLabel}`);
+    for (const f of displayFindings) {
       const sev = f.severity ? ` [${f.severity}]` : "";
       lines.push(`- **${f.title}**${sev}: ${f.summary}`);
     }
   }
 
-  if (primary.recommendedActions.length) {
-    lines.push("\n## Recommended Actions\n");
-    for (const a of primary.recommendedActions) lines.push(`- ${a}`);
+  // Prioritized actions (from synthesisOutput if available, else from primary)
+  const prioritizedActions =
+    synthesis?.synthesisOutput?.prioritizedActions.length
+      ? synthesis.synthesisOutput.prioritizedActions
+      : primary.recommendedActions;
+
+  if (prioritizedActions.length) {
+    lines.push("\n## Prioritized Actions\n");
+    for (const a of prioritizedActions) lines.push(`- ${a}`);
   }
 
-  if (primary.missingInfo.length) {
-    lines.push("\n## Missing Information\n");
-    for (const m of primary.missingInfo) lines.push(`- ${m}`);
+  // Open questions (judge + synthesis missing info)
+  const openQuestions = [
+    ...(synthesis?.judge?.openQuestions ?? []),
+    ...(synthesis?.synthesisOutput?.openQuestions ?? primary.missingInfo),
+  ].filter((q, i, arr) => arr.indexOf(q) === i);
+
+  if (openQuestions.length) {
+    lines.push("\n## Open Questions\n");
+    for (const q of openQuestions) lines.push(`- ${q}`);
   }
 
-  if (primary.confidenceHint) {
-    lines.push(`\n> ${primary.confidenceHint}`);
+  // Confidence notes (judge + synthesis + primary)
+  const confidenceNotes = [
+    ...(synthesis?.synthesisOutput?.confidenceNotes ?? []),
+    ...(primary.confidenceHint ? [primary.confidenceHint] : []),
+  ];
+
+  if (confidenceNotes.length) {
+    lines.push("\n## Confidence Notes\n");
+    for (const n of confidenceNotes) lines.push(`- ${n}`);
+  }
+
+  // Consensus summary (Phase 8)
+  if (synthesis?.consensus) {
+    lines.push("\n## Ensemble Consensus\n");
+    lines.push(synthesis.consensus.agreementSummary);
+    if (synthesis.consensus.disagreementSummary) {
+      lines.push(`\n${synthesis.consensus.disagreementSummary}`);
+    }
+    const conf = synthesis.consensus.ensembleConfidence;
+    lines.push(`\n*Ensemble confidence: ${(conf * 100).toFixed(0)}%*`);
   }
 
   // Per-provider parse quality summary
@@ -810,7 +859,11 @@ function buildFinalMd(markdown: string, subckt?: SubcktIntegration): string {
   return parts.join("\n");
 }
 
-function buildFinalJson(circuitJson: string, results: NormalizedProviderResult[]): string {
+function buildFinalJson(
+  circuitJson: string,
+  results: NormalizedProviderResult[],
+  synthesis?: SynthesisPipelineResult,
+): string {
   try {
     const base = circuitJson ? (JSON.parse(circuitJson) as Record<string, unknown>) : {};
     const enriched = {
@@ -818,7 +871,24 @@ function buildFinalJson(circuitJson: string, results: NormalizedProviderResult[]
       _meta: {
         providerCount: results.length,
         successCount: results.filter((r) => r.status === "succeeded").length,
-        parseQualities: Object.fromEntries(results.map((r) => [`${r.provider}/${r.model}`, r.parseQuality])),
+        parseQualities: Object.fromEntries(
+          results.map((r) => [`${r.provider}/${r.model}`, r.parseQuality]),
+        ),
+        ...(synthesis?.consensus && {
+          ensembleConfidence: synthesis.consensus.ensembleConfidence,
+          consensusClusterCount: synthesis.consensus.clusters.length,
+          outlierCount: synthesis.consensus.clusters.filter((c) => c.isOutlier).length,
+        }),
+        ...(synthesis?.synthesisOutput && {
+          prioritizedActions: synthesis.synthesisOutput.prioritizedActions,
+          openQuestions: synthesis.synthesisOutput.openQuestions,
+          confidenceNotes: synthesis.synthesisOutput.confidenceNotes,
+        }),
+        ...(synthesis?.judge && {
+          judgeProvider: synthesis.judge.judgeProvider,
+          judgeModel: synthesis.judge.judgeModel,
+          judgeOpenQuestions: synthesis.judge.openQuestions,
+        }),
       },
     };
     return JSON.stringify(enriched, null, 2) + "\n";

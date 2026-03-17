@@ -18,6 +18,7 @@ import fs from "fs-extra";
 
 import { dispatchPrompt } from "../../core/providers/resolver.js";
 import { getDefaultModelForProvider } from "../../registry/providers.js";
+import type { ProviderName } from "../../types.js";
 import type {
   ExtractedComponentFact,
   SubcktAbstractionLevel,
@@ -37,7 +38,7 @@ export interface SynthesizeModelInput {
   /** Abstraction level. Defaults to request.abstractionLevel or "behavioral". */
   abstractionLevel?: SubcktAbstractionLevel;
   /** Provider to use. Defaults to "anthropic". */
-  provider?: "openai" | "xai" | "google" | "anthropic";
+  provider?: ProviderName;
   /** Model override. */
   model?: string;
   /** Optional logger. */

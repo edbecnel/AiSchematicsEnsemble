@@ -891,6 +891,7 @@ async function run() {
 
   try {
     const cfg = getConfigFromUi();
+    _lastRunCfg = cfg;
     const apiKeys = getApiKeysForRun();
 
     const resp = await fetch("/api/run", {
@@ -904,6 +905,8 @@ async function run() {
 
     setStatus("ok", "Done. Run folder: " + String((data as any).runDir || ""));
     ((data as any).logs || []).forEach((l: any) => logLine(String(l)));
+
+    void renderRunResults(String((data as any).runDir || ""), (data as any).outputs || {});
 
     if (openRunDirBtn) {
       openRunDirBtn.disabled = false;
@@ -997,6 +1000,424 @@ async function run() {
   }
 }
 
+// ============================================================
+// Phase 9 — Provider catalog, BYOK, custom endpoints, run results
+// ============================================================
+
+type ProviderSummaryUi = {
+  id: string;
+  providerName: string;
+  displayName: string;
+  protocol: string;
+  billingMode: string;
+  isEnabled: boolean;
+  isFreeEligible: boolean;
+  isPremiumOnly: boolean;
+  supportsVision?: boolean;
+  synthesisEligible?: boolean;
+  judgeEligible?: boolean;
+  hasByokCredential?: boolean;
+};
+
+type CustomEndpointUi = {
+  id: string;
+  displayName: string;
+  baseUrl: string;
+  protocol: string;
+  activationStatus: string;
+  lastProbeAt?: string;
+  lastProbeError?: string;
+};
+
+// ---------------------------------------------------------------------------
+// Last run config for retry
+// ---------------------------------------------------------------------------
+let _lastRunCfg: any = null;
+
+// ---------------------------------------------------------------------------
+// Provider catalog
+// ---------------------------------------------------------------------------
+
+let _cachedProviders: ProviderSummaryUi[] = [];
+
+async function loadProvidersPanel(): Promise<void> {
+  const body = byId("providersBody");
+  if (!body) return;
+  try {
+    const res = await fetch("/api/v1/providers");
+    const jsonData: any = await res.json().catch(() => ({ ok: false }));
+    if (!jsonData?.ok) {
+      body.textContent = "Failed to load provider catalog.";
+      return;
+    }
+    _cachedProviders = Array.isArray(jsonData.data?.providers) ? jsonData.data.providers : [];
+    renderProvidersHtml(_cachedProviders, body);
+  } catch (e: any) {
+    if (body) body.textContent = "Error loading providers: " + String(e?.message || e);
+  }
+}
+
+function makeBadge(text: string, cls: string): HTMLSpanElement {
+  const b = document.createElement("span");
+  b.className = "badge " + cls;
+  b.textContent = text;
+  return b;
+}
+
+function renderProvidersHtml(providers: ProviderSummaryUi[], container: HTMLElement): void {
+  container.innerHTML = "";
+  if (!providers.length) { container.textContent = "No providers found."; return; }
+
+  const free = providers.filter(p => p.isFreeEligible && !p.isPremiumOnly);
+  const premium = providers.filter(p => p.isPremiumOnly);
+  const rest = providers.filter(p => !p.isFreeEligible && !p.isPremiumOnly);
+  const groups: Array<{ label: string; items: ProviderSummaryUi[] }> = [];
+  if (free.length) groups.push({ label: "Free tier", items: free });
+  if (rest.length) groups.push({ label: "All providers", items: rest });
+  if (premium.length) groups.push({ label: "Premium", items: premium });
+  if (!groups.length) groups.push({ label: "All providers", items: [...providers] });
+
+  const focusMap: Record<string, "openai" | "xai" | "gemini" | "anthropic"> = {
+    "provider.openai": "openai",
+    "provider.xai": "xai",
+    "provider.google": "gemini",
+    "provider.anthropic": "anthropic",
+  };
+
+  for (const grp of groups) {
+    if (!grp.items.length) continue;
+    const grpDiv = document.createElement("div");
+    grpDiv.className = "providerGroup";
+    const lbl = document.createElement("div");
+    lbl.className = "providerGroupLabel";
+    lbl.textContent = grp.label;
+    grpDiv.appendChild(lbl);
+
+    for (const p of grp.items) {
+      const row = document.createElement("div");
+      row.className = "providerRow";
+
+      const name = document.createElement("span");
+      name.textContent = p.displayName;
+      name.style.fontWeight = "600";
+      name.style.minWidth = "130px";
+      row.appendChild(name);
+
+      row.appendChild(makeBadge(p.protocol, "badge-pending"));
+      if (p.synthesisEligible) row.appendChild(makeBadge("synthesis", "badge-synthesis"));
+      if (p.judgeEligible) row.appendChild(makeBadge("judge", "badge-judge"));
+      if (p.supportsVision) row.appendChild(makeBadge("vision", "badge-vision"));
+      if (p.isFreeEligible) row.appendChild(makeBadge("free", "badge-free"));
+      if (p.isPremiumOnly) row.appendChild(makeBadge("premium", "badge-premium"));
+      if (p.hasByokCredential) row.appendChild(makeBadge("\u2713 key set", "badge-byok"));
+      if (!p.isEnabled) row.appendChild(makeBadge("disabled", "badge-err"));
+
+      const byokBtn = document.createElement("button");
+      byokBtn.type = "button";
+      byokBtn.textContent = p.hasByokCredential ? "Update key" : "Set key";
+      byokBtn.style.cssText = "padding:4px 8px; font-size:12px; margin-left:auto;";
+      const fk = focusMap[p.id];
+      byokBtn.addEventListener("click", () => openKeysModal(fk));
+      row.appendChild(byokBtn);
+
+      grpDiv.appendChild(row);
+    }
+    container.appendChild(grpDiv);
+  }
+
+  // Custom endpoints section
+  const epSection = document.createElement("div");
+  epSection.className = "providerGroup";
+  epSection.style.marginTop = "14px";
+  const epLabel = document.createElement("div");
+  epLabel.className = "providerGroupLabel";
+  epLabel.textContent = "Custom Endpoints";
+  epSection.appendChild(epLabel);
+  const epList = document.createElement("div");
+  epList.id = "customEndpointsList";
+  epSection.appendChild(epList);
+  container.appendChild(epSection);
+
+  renderCustomEndpointsList();
+}
+
+// ---------------------------------------------------------------------------
+// Custom endpoints CRUD
+// ---------------------------------------------------------------------------
+
+let _customEndpoints: CustomEndpointUi[] = [];
+let _editingEndpointId: string | null = null;
+
+function renderCustomEndpointsList(): void {
+  const list = byId("customEndpointsList");
+  if (!list) return;
+  list.innerHTML = "";
+  if (!_customEndpoints.length) {
+    const empty = document.createElement("span");
+    empty.className = "hint";
+    empty.style.fontSize = "12px";
+    empty.textContent = "No custom endpoints added.";
+    list.appendChild(empty);
+    return;
+  }
+  for (const ep of _customEndpoints) {
+    const row = document.createElement("div");
+    row.className = "providerRow";
+    const name = document.createElement("span");
+    name.textContent = ep.displayName;
+    name.style.fontWeight = "600";
+    name.style.minWidth = "130px";
+    row.appendChild(name);
+    const urlSpan = document.createElement("span");
+    urlSpan.className = "mono hint";
+    urlSpan.style.fontSize = "12px";
+    urlSpan.textContent = ep.baseUrl;
+    row.appendChild(urlSpan);
+    row.appendChild(makeBadge(ep.protocol, "badge-pending"));
+    const sc = ep.activationStatus === "active" ? "badge-ok" : ep.activationStatus === "failed_validation" ? "badge-err" : "badge-warn";
+    row.appendChild(makeBadge(ep.activationStatus, sc));
+    const editBtn = document.createElement("button");
+    editBtn.type = "button";
+    editBtn.textContent = "Edit";
+    editBtn.style.cssText = "padding:4px 8px; font-size:12px; margin-left:auto;";
+    editBtn.addEventListener("click", () => openEndpointModal(ep));
+    row.appendChild(editBtn);
+    list.appendChild(row);
+  }
+}
+
+function openEndpointModal(ep?: CustomEndpointUi): void {
+  const modal = byId("endpointModal");
+  if (!modal) return;
+  _editingEndpointId = ep?.id ?? null;
+  const title = byId("endpointModalTitle");
+  if (title) title.textContent = ep ? "Edit Custom Endpoint" : "Add Custom Endpoint";
+  const nameEl = byId<HTMLInputElement>("epName");
+  const urlEl = byId<HTMLInputElement>("epUrl");
+  const protoEl = byId<HTMLSelectElement>("epProtocol");
+  const keyEl = byId<HTMLInputElement>("epKey");
+  const deleteBtn = byId<HTMLButtonElement>("epDeleteBtn");
+  const statusEl = byId("epStatus");
+  if (nameEl) nameEl.value = ep?.displayName ?? "";
+  if (urlEl) urlEl.value = ep?.baseUrl ?? "";
+  if (protoEl) protoEl.value = ep?.protocol ?? "openai-compatible";
+  if (keyEl) keyEl.value = "";
+  if (deleteBtn) deleteBtn.style.display = ep ? "inline-flex" : "none";
+  if (statusEl) { statusEl.textContent = ""; (statusEl as HTMLElement).className = "hint"; }
+  modal.style.display = "flex";
+}
+
+function closeEndpointModal(): void {
+  const modal = byId("endpointModal");
+  if (modal) modal.style.display = "none";
+  _editingEndpointId = null;
+}
+
+function setEpStatus(msg: string, kind: "ok" | "err" | "hint" = "hint"): void {
+  const el = byId("epStatus");
+  if (!el) return;
+  el.className = kind;
+  el.textContent = msg;
+}
+
+async function saveEndpoint(): Promise<void> {
+  const displayName = (byId<HTMLInputElement>("epName")?.value ?? "").trim();
+  const baseUrl = (byId<HTMLInputElement>("epUrl")?.value ?? "").trim();
+  const protocol = byId<HTMLSelectElement>("epProtocol")?.value ?? "openai-compatible";
+  const apiKey = (byId<HTMLInputElement>("epKey")?.value ?? "").trim();
+  if (!displayName) { setEpStatus("Display name is required.", "err"); return; }
+  if (!baseUrl) { setEpStatus("Base URL is required.", "err"); return; }
+  setEpStatus("Saving\u2026");
+  try {
+    const body = JSON.stringify({ displayName, baseUrl, protocol, apiKey });
+    let r: Response;
+    if (_editingEndpointId) {
+      r = await fetch("/api/v1/custom-endpoints/" + encodeURIComponent(_editingEndpointId), {
+        method: "PUT", headers: { "content-type": "application/json" }, body,
+      });
+    } else {
+      r = await fetch("/api/v1/custom-endpoints", {
+        method: "POST", headers: { "content-type": "application/json" }, body,
+      });
+    }
+    const d: any = await r.json().catch(() => ({ ok: false }));
+    if (!d?.ok) { setEpStatus((d?.error?.message ?? "Save failed."), "err"); return; }
+    const saved: CustomEndpointUi = d.data;
+    if (_editingEndpointId) {
+      const idx = _customEndpoints.findIndex(e => e.id === _editingEndpointId);
+      if (idx >= 0) _customEndpoints[idx] = saved; else _customEndpoints.push(saved);
+    } else {
+      _customEndpoints.push(saved);
+    }
+    renderCustomEndpointsList();
+    setEpStatus("Saved.", "ok");
+    showToast("ok", "Custom endpoint saved.");
+    setTimeout(() => closeEndpointModal(), 800);
+  } catch (e: any) {
+    setEpStatus("Error: " + String(e?.message || e), "err");
+  }
+}
+
+async function probeEndpoint(): Promise<void> {
+  if (!_editingEndpointId) { setEpStatus("Save the endpoint first.", "err"); return; }
+  setEpStatus("Testing\u2026");
+  try {
+    const r = await fetch("/api/v1/custom-endpoints/" + encodeURIComponent(_editingEndpointId) + "/probe", {
+      method: "POST",
+    });
+    const d: any = await r.json().catch(() => ({ ok: false }));
+    if (!d?.ok) { setEpStatus("Test failed: " + (d?.error?.message ?? "unknown error"), "err"); return; }
+    const ep: CustomEndpointUi = d.data;
+    const idx = _customEndpoints.findIndex(e => e.id === _editingEndpointId);
+    if (idx >= 0) _customEndpoints[idx] = ep;
+    renderCustomEndpointsList();
+    setEpStatus("Test passed \u2014 status: " + ep.activationStatus, "ok");
+    showToast("ok", "Endpoint test passed.");
+  } catch (e: any) {
+    setEpStatus("Error: " + String(e?.message || e), "err");
+  }
+}
+
+async function deleteEndpoint(): Promise<void> {
+  if (!_editingEndpointId) return;
+  if (!confirm("Delete this custom endpoint?")) return;
+  setEpStatus("Deleting\u2026");
+  try {
+    const r = await fetch("/api/v1/custom-endpoints/" + encodeURIComponent(_editingEndpointId), {
+      method: "DELETE",
+    });
+    const d: any = await r.json().catch(() => ({ ok: false }));
+    if (!d?.ok) { setEpStatus("Delete failed: " + (d?.error?.message ?? "unknown error"), "err"); return; }
+    _customEndpoints = _customEndpoints.filter(e => e.id !== _editingEndpointId);
+    renderCustomEndpointsList();
+    closeEndpointModal();
+    showToast("ok", "Endpoint deleted.");
+  } catch (e: any) {
+    setEpStatus("Error: " + String(e?.message || e), "err");
+  }
+}
+
+// ---------------------------------------------------------------------------
+// BYOK: sync to /api/v1/credentials when keys are saved
+// ---------------------------------------------------------------------------
+
+const PROVIDER_RECORD_IDS: Record<string, string> = {
+  OPENAI_API_KEY: "provider.openai",
+  XAI_API_KEY: "provider.xai",
+  GEMINI_API_KEY: "provider.google",
+  ANTHROPIC_API_KEY: "provider.anthropic",
+};
+
+async function syncByokToServer(keys: ApiKeys): Promise<void> {
+  for (const [envKey, providerRecordId] of Object.entries(PROVIDER_RECORD_IDS)) {
+    const apiKey = String((keys as any)[envKey] || "").trim();
+    if (!apiKey) continue;
+    try {
+      await fetch("/api/v1/credentials", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ providerRecordId, apiKey }),
+      });
+    } catch { /* best-effort */ }
+  }
+  // Refresh catalog so BYOK badge reflects new key state
+  void loadProvidersPanel();
+}
+
+// ---------------------------------------------------------------------------
+// Per-run provider status cards and synthesis view
+// ---------------------------------------------------------------------------
+
+async function renderRunResults(runDir: string, outputs: any): Promise<void> {
+  const resultsCard = byId<HTMLDivElement>("resultsCard");
+  if (!resultsCard) return;
+  resultsCard.style.display = "";
+
+  const statusList = byId<HTMLDivElement>("providerStatusList");
+  if (!statusList) return;
+  statusList.innerHTML = "";
+
+  // Read answers.json for per-provider dispatch details
+  let answers: any[] = [];
+  if (outputs?.answersJson) {
+    try {
+      const u = new URL("/api/file", window.location.origin);
+      u.searchParams.set("path", String(outputs.answersJson));
+      const r = await fetch(u.toString());
+      if (r.ok) {
+        const txt = await r.text();
+        const parsed = JSON.parse(txt);
+        if (Array.isArray(parsed)) answers = parsed;
+      }
+    } catch { /* non-fatal */ }
+  }
+
+  if (answers.length) {
+    for (const ans of answers) {
+      const card = document.createElement("div");
+      card.className = "statusCard";
+
+      const pName = document.createElement("div");
+      pName.className = "provider-name";
+      pName.textContent = String(ans?.provider ?? "Unknown");
+      card.appendChild(pName);
+
+      if (ans?.model) {
+        const mEl = document.createElement("div");
+        mEl.className = "provider-model";
+        mEl.textContent = String(ans.model);
+        card.appendChild(mEl);
+      }
+
+      card.appendChild(makeBadge(
+        ans?.error ? "failed" : "succeeded",
+        ans?.error ? "badge-err" : "badge-ok",
+      ));
+
+      if (ans?.error) {
+        const errEl = document.createElement("div");
+        errEl.className = "hint";
+        errEl.style.fontSize = "11px";
+        errEl.textContent = String(ans.error).slice(0, 140);
+        card.appendChild(errEl);
+      }
+
+      if (typeof ans?.parseQuality === "number") {
+        const qEl = document.createElement("div");
+        qEl.className = "hint";
+        qEl.style.fontSize = "11px";
+        qEl.textContent = "Parse quality: " + (ans.parseQuality as number).toFixed(2);
+        card.appendChild(qEl);
+      }
+
+      statusList.appendChild(card);
+    }
+  } else {
+    const empty = document.createElement("div");
+    empty.className = "hint";
+    empty.textContent = "No per-provider detail available for this run.";
+    statusList.appendChild(empty);
+  }
+
+  // Synthesis / final.md view
+  const synthSection = byId<HTMLDivElement>("synthesisSection");
+  const synthText = byId<HTMLPreElement>("synthesisText");
+  if (synthSection && synthText && outputs?.finalMd) {
+    try {
+      const u = new URL("/api/file", window.location.origin);
+      u.searchParams.set("path", String(outputs.finalMd));
+      const r = await fetch(u.toString());
+      if (r.ok) {
+        const txt = await r.text();
+        synthText.textContent = txt.length > 4000
+          ? txt.slice(0, 4000) + "\n\u2026(truncated \u2014 download for full)"
+          : txt;
+        synthSection.style.display = "";
+      }
+    } catch { /* non-fatal */ }
+  }
+}
+
 function wireEvents(defaults: UiDefaults) {
   const on = (id: string, evt: string, fn: (ev: any) => void) => {
     const el = byId(id);
@@ -1032,6 +1453,7 @@ function wireEvents(defaults: UiDefaults) {
     };
     const ok = saveApiKeys(keys);
     setKeysStatus(ok ? "Saved to localStorage." : "Save failed (localStorage blocked).", ok ? "ok" : "err");
+    void syncByokToServer(keys);
   });
 
   setPasswordToggle("showOpenai", "envOpenai");
@@ -1152,6 +1574,38 @@ function wireEvents(defaults: UiDefaults) {
     on(id, "change", () => updateCommandPreview());
   }
 
+  // Phase 9 — provider catalog, custom endpoints, retry
+  on("refreshProvidersBtn", "click", () => void loadProvidersPanel());
+  on("addEndpointBtn", "click", () => openEndpointModal());
+  on("endpointModalClose", "click", () => closeEndpointModal());
+  on("endpointModalCancel", "click", () => closeEndpointModal());
+  on("epSaveBtn", "click", () => void saveEndpoint());
+  on("epProbeBtn", "click", () => void probeEndpoint());
+  on("epDeleteBtn", "click", () => void deleteEndpoint());
+  on("epShowKey", "click", () => {
+    const el = byId<HTMLInputElement>("epKey");
+    const btn = byId<HTMLButtonElement>("epShowKey");
+    if (!el || !btn) return;
+    const isPw = el.type === "password";
+    el.type = isPw ? "text" : "password";
+    btn.textContent = isPw ? "Hide" : "Show";
+  });
+  const epModal = byId("endpointModal");
+  if (epModal) {
+    epModal.addEventListener("click", (e: any) => {
+      if (e && e.target === epModal) closeEndpointModal();
+    });
+  }
+  on("retryBtn", "click", () => {
+    if (_lastRunCfg) {
+      setConfig(_lastRunCfg);
+      setStatus("hint", "Config restored. Click Run to retry.");
+      showToast("hint", "Config restored.");
+    } else {
+      showToast("warn", "No previous run config to restore.");
+    }
+  });
+
   // Init
   setConfig(defaults);
   resetStatusActionsUi();
@@ -1209,4 +1663,5 @@ window.addEventListener("DOMContentLoaded", () => {
   const defaults = init.defaults || {};
 
   wireEvents(defaults);
+  void loadProvidersPanel();
 });

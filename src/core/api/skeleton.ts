@@ -193,17 +193,21 @@ export interface DispatchSummary {
   latencyMs?: number;
   parseQuality?: number;
   errorCategory?: string;
+  errorMessage?: string;
 }
 
 export interface RunResultSummary {
   dispatchId: string;
   provider: ProviderName;
   model: string;
+  status: DispatchStatus;
   parseQuality: number;
   summary: string;
   findings: NormalizedFinding[];
   spiceNetlist?: string;
   confidenceHint?: string;
+  errorCategory?: string;
+  errorMessage?: string;
 }
 
 export interface GetRunResultsResponse {

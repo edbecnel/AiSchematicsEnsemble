@@ -6,6 +6,8 @@
  * runtime dependencies — it is pure type declarations.
  */
 
+import type { ProviderName } from "../types.js";
+
 // ---------------------------------------------------------------------------
 // Primary request type
 // ---------------------------------------------------------------------------
@@ -211,20 +213,31 @@ export interface SubcktLibResult {
  */
 export type SubcktProviderRole = "fact_extraction" | "model_synthesis" | "judge_repair";
 
+export interface SubcktProviderTarget {
+  /**
+   * Shared provider identifier used by the main provider registry/adapter flow.
+   * This can be a built-in provider name today and can later grow to include
+   * provider-definition or custom-endpoint IDs without another SUBCKT type rewrite.
+   */
+  provider: ProviderName;
+  /** Optional model override for the selected provider. */
+  model?: string;
+}
+
 /**
  * Per-role provider/model overrides.
  * Any role that is not specified falls back to the run-level defaults.
  */
 export interface SubcktProviderRoleConfig {
   /** Provider + optional model override for the fact-extraction (Phase D) call. */
-  factExtraction?: { provider: "openai" | "xai" | "google" | "anthropic"; model?: string };
+  factExtraction?: SubcktProviderTarget;
   /** Provider + optional model override for the synthesis (Phase E) call. */
-  modelSynthesis?: { provider: "openai" | "xai" | "google" | "anthropic"; model?: string };
+  modelSynthesis?: SubcktProviderTarget;
   /**
    * Provider + optional model override for the judge/repair call.
    * Populated automatically when the refinement workflow uses AI to repair a failed model.
    */
-  judgeRepair?: { provider: "openai" | "xai" | "google" | "anthropic"; model?: string };
+  judgeRepair?: SubcktProviderTarget;
 }
 
 // ---------------------------------------------------------------------------

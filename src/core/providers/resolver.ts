@@ -3,11 +3,12 @@ import { AnthropicNativeAdapter } from "../../adapters/anthropicNative.js";
 import { GeminiNativeAdapter } from "../../adapters/geminiNative.js";
 import { OpenAICompatibleAdapter } from "../../adapters/openaiCompatible.js";
 import { resolveProvider } from "../../registry/providers.js";
-import type { ModelAnswer, ProviderName, ProviderProtocol } from "../../types.js";
+import { isBuiltinProviderProtocol } from "../../types.js";
+import type { BuiltinProviderProtocol, ModelAnswer, ProviderName, ProviderProtocol } from "../../types.js";
 import type { ProviderAdapter } from "./adapter.js";
 import { modelAnswerFromRaw, singleUserPromptMessage } from "./adapter.js";
 
-const adapterRegistry: Record<ProviderProtocol, ProviderAdapter | undefined> = {
+const adapterRegistry: Partial<Record<BuiltinProviderProtocol, ProviderAdapter>> = {
   "openai-compatible": new OpenAICompatibleAdapter(),
   "anthropic-native": new AnthropicNativeAdapter(),
   "anthropic-compatible": new AnthropicCompatibleAdapter(),
@@ -15,7 +16,7 @@ const adapterRegistry: Record<ProviderProtocol, ProviderAdapter | undefined> = {
 };
 
 export function getProviderAdapter(protocol: ProviderProtocol): ProviderAdapter {
-  const adapter = adapterRegistry[protocol];
+  const adapter = isBuiltinProviderProtocol(protocol) ? adapterRegistry[protocol] : undefined;
   if (!adapter) {
     throw new Error(`No provider adapter registered for protocol: ${protocol}`);
   }

@@ -1,6 +1,21 @@
 import fs from "fs-extra";
 import path from "node:path";
 import { z } from "zod";
+import { isBuiltinProviderName } from "../types.js";
+
+const PROVIDER_DEFINITION_ID_TO_NAME = {
+  "provider.openai": "openai",
+  "provider.xai": "xai",
+  "provider.google": "google",
+  "provider.anthropic": "anthropic",
+} as const;
+
+const PROVIDER_MODEL_KEY_ALIASES = {
+  openai: ["openai", "provider.openai", "openaiModel"],
+  xai: ["xai", "provider.xai", "grok", "grokModel", "xaiModel"],
+  google: ["google", "provider.google", "gemini", "geminiModel", "googleModel"],
+  anthropic: ["anthropic", "provider.anthropic", "claude", "claudeModel", "anthropicModel"],
+} as const;
 
 const RunConfigSchema = z
   .object({
@@ -67,6 +82,17 @@ const RunConfigSchema = z
     claudeModel: z.string().optional(),
     enabledProviders: z.array(z.enum(["openai", "xai", "google", "anthropic"])).optional(),
     /**
+     * Canonical provider→model mapping for migration toward the registry-based
+     * provider architecture. Legacy `openaiModel` / `claudeModel` fields still
+     * work and are normalized into those fields on read.
+     */
+    providerModels: z.record(z.string(), z.string()).optional(),
+    /**
+     * Canonical built-in provider definition IDs for config migration support.
+     * Values such as `provider.openai` are normalized into `enabledProviders`.
+     */
+    providerDefinitionIds: z.array(z.string()).optional(),
+    /**
      * Optional SUBCKT integration config.
      * When mode is "manual", generates .lib files for the listed components.
      */
@@ -94,13 +120,13 @@ const RunConfigSchema = z
         providerRoles: z
           .object({
             factExtraction: z
-              .object({ provider: z.enum(["openai", "xai", "google", "anthropic"]), model: z.string().optional() })
+              .object({ provider: z.string(), model: z.string().optional() })
               .optional(),
             modelSynthesis: z
-              .object({ provider: z.enum(["openai", "xai", "google", "anthropic"]), model: z.string().optional() })
+              .object({ provider: z.string(), model: z.string().optional() })
               .optional(),
             judgeRepair: z
-              .object({ provider: z.enum(["openai", "xai", "google", "anthropic"]), model: z.string().optional() })
+              .object({ provider: z.string(), model: z.string().optional() })
               .optional(),
           })
           .optional(),
@@ -144,6 +170,55 @@ function parseRefImageSpec(spec: unknown): { tag: string; path: string } | undef
 
   // Fallback: just a path; tag is derived from filename.
   return { tag: defaultTagFromPath(s), path: s };
+}
+
+function cleanStringRecord(v: unknown): Record<string, string> | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+
+  const out: Record<string, string> = {};
+  for (const [key, value] of Object.entries(v)) {
+    const cleanKey = cleanString(key);
+    const cleanValue = cleanString(value);
+    if (cleanKey && cleanValue) out[cleanKey] = cleanValue;
+  }
+
+  return Object.keys(out).length ? out : undefined;
+}
+
+function cleanProviderTarget(v: unknown): { provider: string; model?: string } | undefined {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return undefined;
+
+  const provider = cleanString((v as Record<string, unknown>).provider);
+  if (!provider) return undefined;
+
+  const model = cleanString((v as Record<string, unknown>).model);
+  return model ? { provider, model } : { provider };
+}
+
+function resolveProviderModelFromMap(
+  providerModels: Record<string, string> | undefined,
+  provider: keyof typeof PROVIDER_MODEL_KEY_ALIASES,
+): string | undefined {
+  if (!providerModels) return undefined;
+
+  for (const key of PROVIDER_MODEL_KEY_ALIASES[provider]) {
+    const value = cleanString(providerModels[key]);
+    if (value) return value;
+  }
+
+  return undefined;
+}
+
+function normalizeEnabledProvidersFromDefinitionIds(ids: string[] | undefined) {
+  if (!ids?.length) return undefined;
+
+  const normalized = ids
+    .map((id) => cleanString(id))
+    .filter((id): id is string => Boolean(id))
+    .map((id) => PROVIDER_DEFINITION_ID_TO_NAME[id as keyof typeof PROVIDER_DEFINITION_ID_TO_NAME])
+    .filter((provider): provider is (typeof PROVIDER_DEFINITION_ID_TO_NAME)[keyof typeof PROVIDER_DEFINITION_ID_TO_NAME] => Boolean(provider));
+
+  return normalized.length ? Array.from(new Set(normalized)) : undefined;
 }
 
 export async function readRunConfig(configPath: string): Promise<RunConfig> {
@@ -213,6 +288,31 @@ export async function readRunConfig(configPath: string): Promise<RunConfig> {
         .filter((x): x is { mimeType: string; base64: string; filename?: string } => Boolean(x))
     : undefined;
 
+  const providerModels = cleanStringRecord(cfg.providerModels);
+  const enabledProvidersFromIds = normalizeEnabledProvidersFromDefinitionIds(cfg.providerDefinitionIds);
+
+  const openaiModel = cleanString(cfg.openaiModel) ?? resolveProviderModelFromMap(providerModels, "openai");
+  const grokModel = cleanString(cfg.grokModel) ?? resolveProviderModelFromMap(providerModels, "xai");
+  const geminiModel = cleanString(cfg.geminiModel) ?? resolveProviderModelFromMap(providerModels, "google");
+  const claudeModel = cleanString(cfg.claudeModel) ?? resolveProviderModelFromMap(providerModels, "anthropic");
+
+  const enabledProviders = Array.isArray(cfg.enabledProviders) && cfg.enabledProviders.length
+    ? cfg.enabledProviders
+    : enabledProvidersFromIds;
+
+  const subcktIntegration = cfg.subcktIntegration
+    ? {
+        ...cfg.subcktIntegration,
+        providerRoles: cfg.subcktIntegration.providerRoles
+          ? {
+              factExtraction: cleanProviderTarget(cfg.subcktIntegration.providerRoles.factExtraction),
+              modelSynthesis: cleanProviderTarget(cfg.subcktIntegration.providerRoles.modelSynthesis),
+              judgeRepair: cleanProviderTarget(cfg.subcktIntegration.providerRoles.judgeRepair),
+            }
+          : undefined,
+      }
+    : undefined;
+
   return {
     questionPath: cleanString(cfg.questionPath),
     questionText: cleanString(cfg.questionText),
@@ -229,12 +329,16 @@ export async function readRunConfig(configPath: string): Promise<RunConfig> {
     bundleIncludes: cfg.bundleIncludes,
     outdir: cleanString(cfg.outdir),
     schematicDpi: typeof cfg.schematicDpi === "number" && Number.isFinite(cfg.schematicDpi) ? cfg.schematicDpi : undefined,
-    openaiModel: cleanString(cfg.openaiModel),
-    grokModel: cleanString(cfg.grokModel),
-    geminiModel: cleanString(cfg.geminiModel),
-    claudeModel: cleanString(cfg.claudeModel),
-    enabledProviders: Array.isArray(cfg.enabledProviders) && cfg.enabledProviders.length ? cfg.enabledProviders : undefined,
-    subcktIntegration: cfg.subcktIntegration,
+    openaiModel,
+    grokModel,
+    geminiModel,
+    claudeModel,
+    enabledProviders,
+    providerModels,
+    providerDefinitionIds: Array.isArray(cfg.providerDefinitionIds) && cfg.providerDefinitionIds.length
+      ? cfg.providerDefinitionIds.map((id) => cleanString(id)).filter((id): id is string => Boolean(id))
+      : undefined,
+    subcktIntegration,
   };
 }
 
@@ -312,6 +416,23 @@ export function mergeRunConfig(cli: {
 
   const cm = cleanString(cli.claudeModel);
   if (cm) merged.claudeModel = cm;
+
+  const canonicalProviderModels: Record<string, string> = {
+    ...(cleanStringRecord((merged as any).providerModels) ?? {}),
+  };
+  if (merged.openaiModel) canonicalProviderModels.openai = merged.openaiModel;
+  if (merged.grokModel) canonicalProviderModels.xai = merged.grokModel;
+  if (merged.geminiModel) canonicalProviderModels.google = merged.geminiModel;
+  if (merged.claudeModel) canonicalProviderModels.anthropic = merged.claudeModel;
+  if (Object.keys(canonicalProviderModels).length) (merged as any).providerModels = canonicalProviderModels;
+
+  const normalizedEnabledProviders = Array.isArray(merged.enabledProviders)
+    ? merged.enabledProviders.filter((provider): provider is "openai" | "xai" | "google" | "anthropic" => isBuiltinProviderName(String(provider)))
+    : undefined;
+  if (normalizedEnabledProviders?.length) {
+    merged.enabledProviders = normalizedEnabledProviders;
+    (merged as any).providerDefinitionIds = normalizedEnabledProviders.map((provider) => `provider.${provider}`);
+  }
 
   return merged;
 }

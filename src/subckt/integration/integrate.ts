@@ -110,7 +110,6 @@ export async function runSubcktIntegration(
     log(`  Generating: ${label}`);
 
     try {
-      const roleOverrides = config.providerRoles;
       const createOut = await createSubckt({
         componentName: spec.componentName,
         manufacturer: spec.manufacturer,
@@ -119,10 +118,7 @@ export async function runSubcktIntegration(
         abstractionLevel: spec.abstractionLevel ?? "behavioral",
         outdir: subcktRunsDir,
         runSmokeTest: true,
-        extractionProvider: roleOverrides?.factExtraction?.provider,
-        extractionModel: roleOverrides?.factExtraction?.model,
-        synthesisProvider: roleOverrides?.modelSynthesis?.provider,
-        synthesisModel: roleOverrides?.modelSynthesis?.model,
+        providerRoles: config.providerRoles,
         log,
       });
 

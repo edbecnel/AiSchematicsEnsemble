@@ -21,6 +21,7 @@ import fs from "fs-extra";
 
 import { dispatchPrompt } from "../../core/providers/resolver.js";
 import { getDefaultModelForProvider } from "../../registry/providers.js";
+import type { ProviderName } from "../../types.js";
 import type { ExtractedComponentFact, SubcktLibRequest, SubcktPinDefinition } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -34,7 +35,7 @@ export interface ExtractFactsInput {
   /** Sections already identified by the ingestion step. */
   identifiedSections?: Array<{ kind: string; heading: string; text: string }>;
   /** Provider to use for extraction. Defaults to anthropic. */
-  provider?: "openai" | "xai" | "google" | "anthropic";
+  provider?: ProviderName;
   /** Model override. */
   model?: string;
   /** Optional logger. */

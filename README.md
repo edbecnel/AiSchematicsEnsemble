@@ -6,6 +6,13 @@ If you just want to use the tool (inputs/outputs + examples), see **Help.md** (o
 
 CLI install/setup guide (HTML, GitHub Pages-friendly): **cli-help.html**.
 
+## Planning documents
+
+- Merged cross-tasklist priority queue: [docs/merged-cross-tasklist-priority-queue.md](docs/merged-cross-tasklist-priority-queue.md)
+- Open provider phased tasklist: [docs/open-provider-phased-tasklist.md](docs/open-provider-phased-tasklist.md)
+- SUBCKT library utility tasklist: [docs/subckt-lib-utility-tasklist.md](docs/subckt-lib-utility-tasklist.md)
+- Interactive run refinement tasklist: [docs/interactive-run-refinement-tasklist.md](docs/interactive-run-refinement-tasklist.md)
+
 ## What it does
 
 - Queries multiple AI providers (OpenAI, xAI Grok, Gemini, Claude)

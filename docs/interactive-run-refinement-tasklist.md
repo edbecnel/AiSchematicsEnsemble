@@ -13,6 +13,7 @@ This checklist tracks a future feature for post-run interactive chat, structured
 - Main provider migration checklist: [open-provider-phased-tasklist.md](open-provider-phased-tasklist.md)
 - SUBCKT utility architecture: [subckt-lib-utility-architecture.md](subckt-lib-utility-architecture.md)
 - SUBCKT utility checklist: [subckt-lib-utility-tasklist.md](subckt-lib-utility-tasklist.md)
+- Merged cross-tasklist priority queue: [merged-cross-tasklist-priority-queue.md](merged-cross-tasklist-priority-queue.md)
 
 ## Preconditions
 

@@ -38,6 +38,19 @@ export interface PromptProfile {
 export interface PromptBuildExtra {
   /** Raw text blocks from prior analysis step; used by the "synthesis" profile. */
   analysisAnswers?: Array<{ provider: string; model: string; text: string; error?: string }>;
+  /**
+   * Consensus + findings summary for the "judge" profile.
+   * Formatted as plain text by the caller so the profile stays decoupled
+   * from the ConsensusResult type.
+   */
+  judgeInput?: {
+    /** Human-readable consensus summary block (built by pipeline.ts). */
+    consensusSummary: string;
+    /** Finding clusters rendered as plain text for the prompt. */
+    clusterText: string;
+    /** Every provider's full normalized answer summary for reference. */
+    analysisSummaries: Array<{ provider: string; model: string; summary: string }>;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -224,6 +237,90 @@ Do NOT include any text outside the JSON object. Omit a key if you have no data 
 };
 
 // ---------------------------------------------------------------------------
+// Profile: judge
+// ---------------------------------------------------------------------------
+
+const JUDGE_FINDINGS_OPEN = "<judge_prioritized_findings>";
+const JUDGE_FINDINGS_CLOSE = "</judge_prioritized_findings>";
+const JUDGE_QUESTIONS_OPEN = "<judge_open_questions>";
+const JUDGE_QUESTIONS_CLOSE = "</judge_open_questions>";
+const JUDGE_CONFIDENCE_OPEN = "<judge_confidence_notes>";
+const JUDGE_CONFIDENCE_CLOSE = "</judge_confidence_notes>";
+
+export const JUDGE_OUTPUT_TAGS = {
+  findingsOpen: JUDGE_FINDINGS_OPEN,
+  findingsClose: JUDGE_FINDINGS_CLOSE,
+  questionsOpen: JUDGE_QUESTIONS_OPEN,
+  questionsClose: JUDGE_QUESTIONS_CLOSE,
+  confidenceOpen: JUDGE_CONFIDENCE_OPEN,
+  confidenceClose: JUDGE_CONFIDENCE_CLOSE,
+};
+
+const judgeProfile: PromptProfile = {
+  id: "judge",
+  displayName: "Judge / Reranker",
+
+  buildMessages(context, extra): NormalizedPromptMessage[] {
+    const ji = extra?.judgeInput;
+    const contextBlock = buildContextBlock(context);
+
+    const clusterSection = ji?.clusterText
+      ? `\nFINDING CLUSTERS (from consensus step):\n${ji.clusterText}\n`
+      : "";
+
+    const summarySection = ji?.consensusSummary
+      ? `\nCONSENSUS SUMMARY:\n${ji.consensusSummary}\n`
+      : "";
+
+    const analysisSummaries = ji?.analysisSummaries ?? [];
+    const answersBlock = analysisSummaries.length
+      ? analysisSummaries
+          .map((a) => `## ${a.provider} / ${a.model}\n\n${a.summary.trim()}`)
+          .join("\n\n---\n\n")
+      : "(No individual summaries provided)";
+
+    const outputFormat = `
+OUTPUT FORMAT (MUST match exactly):
+
+${JUDGE_FINDINGS_OPEN}
+(List each finding on its own bullet line as: - [SEVERITY] Title: one-sentence justification)
+Example: - [high] Inductive spike on MOSFET drain: gate drive may be insufficient to absorb energy at turn-off.
+${JUDGE_FINDINGS_CLOSE}
+
+${JUDGE_QUESTIONS_OPEN}
+(One open question per bullet: - Question text)
+${JUDGE_QUESTIONS_CLOSE}
+
+${JUDGE_CONFIDENCE_OPEN}
+(One confidence note per bullet: - Note text)
+${JUDGE_CONFIDENCE_CLOSE}
+`.trim();
+
+    const userContent = `You are an expert electrical engineer acting as a judge and reranker.
+You have received findings from multiple AI analysis models for the same circuit/schematic question.
+Your job is to:
+  1. Rerank and prioritize the findings from most to least critical.
+  2. Identify open questions that none of the models answered adequately.
+  3. Provide confidence notes about the overall analysis quality.
+
+Be succinct: findings list should have at most 10 items; open questions at most 5; confidence notes at most 5.
+Omit a section rather than filling it with low-value items.
+
+QUESTION:
+${context.userInstructions.trim()}
+${contextBlock}
+${summarySection}
+${clusterSection}
+INDIVIDUAL PROVIDER SUMMARIES:
+${answersBlock}
+
+${outputFormat}`;
+
+    return [{ role: "user", text: userContent }];
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
@@ -231,6 +328,7 @@ export const PROMPT_PROFILES: Record<PromptProfileId, PromptProfile> = {
   "analysis": analysisProfile,
   "synthesis": synthesisProfile,
   "structured-output": structuredOutputProfile,
+  "judge": judgeProfile,
 };
 
 /**

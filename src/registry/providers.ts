@@ -1,4 +1,5 @@
 import type {
+  BuiltinProviderName,
   ModelAlias,
   ModelDefinition,
   ProviderCapabilities,
@@ -6,12 +7,22 @@ import type {
   ProviderName,
   ResolvedProvider,
 } from "../types.js";
+import { BUILTIN_PROVIDER_NAMES, isBuiltinProviderName } from "../types.js";
+
+const BUILTIN_PROVIDER_BY_DEFINITION_ID: Record<string, BuiltinProviderName> = {
+  "provider.openai": "openai",
+  "provider.xai": "xai",
+  "provider.google": "google",
+  "provider.anthropic": "anthropic",
+};
 
 const OPENAI_CAPABILITIES: ProviderCapabilities = {
   supportsVision: true,
   supportsStructuredOutput: true,
   hostedAvailable: true,
   localDevAvailable: false,
+  synthesisEligible: true,
+  judgeEligible: false,
 };
 
 const XAI_CAPABILITIES: ProviderCapabilities = {
@@ -19,6 +30,8 @@ const XAI_CAPABILITIES: ProviderCapabilities = {
   supportsStructuredOutput: true,
   hostedAvailable: true,
   localDevAvailable: false,
+  synthesisEligible: false,
+  judgeEligible: false,
 };
 
 const GEMINI_CAPABILITIES: ProviderCapabilities = {
@@ -26,6 +39,8 @@ const GEMINI_CAPABILITIES: ProviderCapabilities = {
   supportsStructuredOutput: false,
   hostedAvailable: true,
   localDevAvailable: false,
+  synthesisEligible: false,
+  judgeEligible: false,
 };
 
 const ANTHROPIC_CAPABILITIES: ProviderCapabilities = {
@@ -33,9 +48,11 @@ const ANTHROPIC_CAPABILITIES: ProviderCapabilities = {
   supportsStructuredOutput: false,
   hostedAvailable: true,
   localDevAvailable: false,
+  synthesisEligible: true,
+  judgeEligible: true,
 };
 
-export const BUILTIN_PROVIDER_DEFINITIONS: Record<ProviderName, ProviderDefinition> = {
+export const BUILTIN_PROVIDER_DEFINITIONS: Record<BuiltinProviderName, ProviderDefinition> = {
   openai: {
     id: "provider.openai",
     provider: "openai",
@@ -104,6 +121,8 @@ export const MODEL_CATALOG: ModelDefinition[] = [
     modelId: "gpt-5.2",
     displayName: "OpenAI GPT-5.2",
     capabilities: OPENAI_CAPABILITIES,
+    synthesisEligible: true,
+    judgeEligible: false,
     pricing: {},
     isEnabled: true,
   },
@@ -113,6 +132,8 @@ export const MODEL_CATALOG: ModelDefinition[] = [
     modelId: "grok-4",
     displayName: "xAI Grok 4",
     capabilities: XAI_CAPABILITIES,
+    synthesisEligible: false,
+    judgeEligible: false,
     pricing: {},
     isEnabled: true,
   },
@@ -122,6 +143,8 @@ export const MODEL_CATALOG: ModelDefinition[] = [
     modelId: "gemini-2.5-flash",
     displayName: "Gemini 2.5 Flash",
     capabilities: GEMINI_CAPABILITIES,
+    synthesisEligible: false,
+    judgeEligible: false,
     pricing: {},
     isEnabled: true,
   },
@@ -131,6 +154,8 @@ export const MODEL_CATALOG: ModelDefinition[] = [
     modelId: "claude-sonnet-4-5-20250929",
     displayName: "Claude Sonnet 4.5",
     capabilities: ANTHROPIC_CAPABILITIES,
+    synthesisEligible: true,
+    judgeEligible: true,
     pricing: {},
     isEnabled: true,
   },
@@ -144,7 +169,7 @@ export const MODEL_ALIASES: ModelAlias[] = [
   { id: "alias.judge.default", alias: "judge.default", targetModelDefinitionId: "model.anthropic.claude-sonnet-4-5-20250929", isDefault: true },
 ];
 
-export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderName, string> = {
+export const DEFAULT_MODEL_BY_PROVIDER: Record<BuiltinProviderName, string> = {
   openai: "gpt-5.2",
   xai: "grok-4",
   google: "gemini-2.5-flash",
@@ -152,19 +177,56 @@ export const DEFAULT_MODEL_BY_PROVIDER: Record<ProviderName, string> = {
 };
 
 export function listProviderDefinitions(): ProviderDefinition[] {
-  return Object.values(BUILTIN_PROVIDER_DEFINITIONS);
+  return BUILTIN_PROVIDER_NAMES.map((provider) => BUILTIN_PROVIDER_DEFINITIONS[provider]);
 }
 
-export function getProviderDefinition(provider: ProviderName): ProviderDefinition {
-  return BUILTIN_PROVIDER_DEFINITIONS[provider];
+export function listModelDefinitions(): ModelDefinition[] {
+  return [...MODEL_CATALOG];
+}
+
+export function getModelDefinitionById(id: string): ModelDefinition | undefined {
+  return MODEL_CATALOG.find((model) => model.id === id);
+}
+
+export function getDefaultModelDefinitionForProvider(provider: ProviderName): ModelDefinition | undefined {
+  const definition = getProviderDefinition(provider);
+  if (!definition) return undefined;
+
+  const normalizedProvider = normalizeBuiltinProviderReference(provider);
+  const defaultModelId = definition.id && normalizedProvider
+    ? DEFAULT_MODEL_BY_PROVIDER[normalizedProvider]
+    : undefined;
+
+  return MODEL_CATALOG.find((model) => {
+    if (model.providerDefinitionId !== definition.id || !model.isEnabled) return false;
+    return defaultModelId ? model.modelId === defaultModelId : true;
+  });
+}
+
+export function normalizeBuiltinProviderReference(provider: ProviderName): BuiltinProviderName | undefined {
+  if (isBuiltinProviderName(provider)) return provider;
+  return BUILTIN_PROVIDER_BY_DEFINITION_ID[String(provider)];
+}
+
+export function getProviderDefinition(provider: ProviderName): ProviderDefinition | undefined {
+  const normalizedProvider = normalizeBuiltinProviderReference(provider);
+  return normalizedProvider ? BUILTIN_PROVIDER_DEFINITIONS[normalizedProvider] : undefined;
+}
+
+function requireBuiltinProvider(provider: ProviderName): BuiltinProviderName {
+  const normalizedProvider = normalizeBuiltinProviderReference(provider);
+  if (!normalizedProvider) {
+    throw new Error(`No built-in provider definition registered for provider: ${provider}`);
+  }
+  return normalizedProvider;
 }
 
 export function getDefaultModelForProvider(provider: ProviderName): string {
-  return DEFAULT_MODEL_BY_PROVIDER[provider];
+  return DEFAULT_MODEL_BY_PROVIDER[requireBuiltinProvider(provider)];
 }
 
 export function getProviderEnvVar(provider: ProviderName): string | undefined {
-  return BUILTIN_PROVIDER_DEFINITIONS[provider].authEnvVar;
+  return getProviderDefinition(provider)?.authEnvVar;
 }
 
 export function providerHasConfiguredEnvKey(provider: ProviderName): boolean {
@@ -173,11 +235,12 @@ export function providerHasConfiguredEnvKey(provider: ProviderName): boolean {
 }
 
 export function resolveProvider(args: { provider: ProviderName; model?: string }): ResolvedProvider {
-  const definition = getProviderDefinition(args.provider);
+  const builtinProvider = requireBuiltinProvider(args.provider);
+  const definition = BUILTIN_PROVIDER_DEFINITIONS[builtinProvider];
   return {
     provider: definition.provider,
     protocol: definition.protocol,
-    model: args.model?.trim() || getDefaultModelForProvider(args.provider),
+    model: args.model?.trim() || DEFAULT_MODEL_BY_PROVIDER[builtinProvider],
     baseUrl: definition.baseUrl,
     authEnvVar: definition.authEnvVar,
     authHeaderName: definition.authHeaderName,
@@ -185,4 +248,14 @@ export function resolveProvider(args: { provider: ProviderName; model?: string }
     capabilities: definition.capabilities,
     billingMode: definition.billingMode,
   };
+}
+
+/** Return all built-in provider names whose capabilities mark synthesisEligible=true. */
+export function getSynthesisEligibleProviders(): BuiltinProviderName[] {
+  return BUILTIN_PROVIDER_NAMES.filter((provider) => getDefaultModelDefinitionForProvider(provider)?.synthesisEligible === true);
+}
+
+/** Return all built-in provider names whose capabilities mark judgeEligible=true. */
+export function getJudgeEligibleProviders(): BuiltinProviderName[] {
+  return BUILTIN_PROVIDER_NAMES.filter((provider) => getDefaultModelDefinitionForProvider(provider)?.judgeEligible === true);
 }

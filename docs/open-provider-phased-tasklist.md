@@ -22,6 +22,7 @@ This checklist is the active implementation driver for the open-provider migrati
 - Phase 0 regression/defaults baseline: [open-provider-phase0-baseline.md](open-provider-phase0-baseline.md)
 - SUBCKT utility design: [docs/subckt-lib-utility-architecture.md](docs/subckt-lib-utility-architecture.md)
 - SUBCKT utility implementation checklist: [docs/subckt-lib-utility-tasklist.md](docs/subckt-lib-utility-tasklist.md)
+- Merged cross-tasklist priority queue: [docs/merged-cross-tasklist-priority-queue.md](docs/merged-cross-tasklist-priority-queue.md)
 
 ## Revised execution order
 
@@ -86,7 +87,7 @@ These are the recommended first implementation steps across the main open-provid
 
 ## Phase 1 — Core provider abstraction inside current repo
 
-- [ ] Replace the narrow `ProviderName` pattern in [src/types.ts](src/types.ts) with extensible provider/protocol types
+- [x] Replace the narrow `ProviderName` pattern in [src/types.ts](src/types.ts) with extensible provider/protocol types
 - [x] Extract shared types and schemas into reusable packages/modules now, not later
 - [x] Introduce `ProviderProtocol`, `BillingMode`, `ProviderCapabilities`, and resolved-provider types
 - [x] Add `ModelDefinition` and `ModelAlias` types
@@ -119,10 +120,10 @@ These are the recommended first implementation steps across the main open-provid
 - [x] Create a model catalog for concrete model IDs
 - [x] Add stable model aliases such as `openai.flagship`, `anthropic.flagship`, `judge.default`
 - [x] Add capability metadata for each built-in model
-- [ ] Add synthesis-eligible and judge-eligible flags
+- [x] Add synthesis-eligible and judge-eligible flags
 - [x] Add pricing metadata placeholders even if billing is not yet active
 - [x] Add environment-key mapping rules for platform-owned local/dev credentials
-- [ ] Add config migration support so existing `openaiModel`, `claudeModel`, etc. still resolve cleanly
+- [x] Add config migration support so existing `openaiModel`, `claudeModel`, etc. still resolve cleanly
 - [x] Add `billingMode` and `providerScope` explicitly to provider definitions:
   - [ ] `platform_free`
   - [x] `platform_paid`
@@ -161,7 +162,7 @@ These are the recommended first implementation steps across the main open-provid
 - [x] Normalize every provider result into summary, findings, assumptions, missing info, and recommended actions
 - [x] Add parse-quality scoring for normalized outputs
 - [x] Add confidence-scoring hooks now, even if consensus boosting comes later
-- [ ] Preserve partial results when one or more providers fail
+- [x] Preserve partial results when one or more providers fail
 - [x] Add consistent error categories for auth, timeout, malformed output, unsupported attachments, and provider unavailability
 
 ### Phase 3 guardrails
@@ -209,7 +210,7 @@ These are the recommended first implementation steps across the main open-provid
   - [x] run APIs skeleton
   - [x] project/artifact APIs skeleton
   - [x] billing summary API skeleton
-- [ ] Migrate filesystem-only assumptions behind storage abstractions where needed to support later hosted rollout
+- [x] Migrate filesystem-only assumptions behind storage abstractions where needed to support later hosted rollout
 
 ### Phase 4.5 guardrails
 
@@ -314,20 +315,20 @@ These are the recommended first implementation steps across the main open-provid
 
 ## Phase 8 — Synthesis, consensus, and judge pipeline
 
-- [ ] Separate analysis providers from synthesis provider selection
-- [ ] Add a dedicated synthesis output type
-- [ ] Add a minimal consensus grouping strategy first:
-  - [ ] title/category similarity
-  - [ ] severity comparison
-  - [ ] outlier detection
-- [ ] Add consensus clustering across normalized findings
-- [ ] Add agreement/disagreement summaries
-- [ ] Add optional judge/reranker stage
-- [ ] Add synthesis-provider eligibility rules
-- [ ] Ensure synthesis failure does not invalidate otherwise successful runs
-- [ ] Add formal invariant: raw ensemble still succeeds without synthesis
-- [ ] Add confidence heuristics based on agreement, evidence, and parse quality
-- [ ] Add outputs for prioritized fixes, open questions, and confidence notes
+- [x] Separate analysis providers from synthesis provider selection
+- [x] Add a dedicated synthesis output type
+- [x] Add a minimal consensus grouping strategy first:
+  - [x] title/category similarity
+  - [x] severity comparison
+  - [x] outlier detection
+- [x] Add consensus clustering across normalized findings
+- [x] Add agreement/disagreement summaries
+- [x] Add optional judge/reranker stage
+- [x] Add synthesis-provider eligibility rules
+- [x] Ensure synthesis failure does not invalidate otherwise successful runs
+- [x] Add formal invariant: raw ensemble still succeeds without synthesis
+- [x] Add confidence heuristics based on agreement, evidence, and parse quality
+- [x] Add outputs for prioritized fixes, open questions, and confidence notes
 
 ### Phase 8 guardrails
 
@@ -335,27 +336,27 @@ These are the recommended first implementation steps across the main open-provid
 
 ## Phase 8.5 — Hosted API completion milestone
 
-- [ ] Complete provider APIs:
-  - [ ] list providers
-  - [ ] add BYOK
-  - [ ] add custom endpoint
-  - [ ] update custom endpoint
-  - [ ] delete custom endpoint
-- [ ] Complete run APIs:
-  - [ ] create run
-  - [ ] list runs
-  - [ ] get run
-  - [ ] get run results
-  - [ ] retry run
-- [ ] Complete project and artifact APIs:
-  - [ ] create project
-  - [ ] list projects
-  - [ ] create artifact
-  - [ ] get artifact
-- [ ] Complete billing summary APIs
-- [ ] Add provider management API client layer separate from UI components
-- [ ] Add run API client layer separate from UI components
-- [ ] Ensure the API and service-contract style is reusable for later SUBCKT utility endpoints and integrated run outputs
+- [x] Complete provider APIs:
+  - [x] list providers
+  - [x] add BYOK
+  - [x] add custom endpoint
+  - [x] update custom endpoint
+  - [x] delete custom endpoint
+- [x] Complete run APIs:
+  - [x] create run
+  - [x] list runs
+  - [x] get run
+  - [x] get run results
+  - [x] retry run
+- [x] Complete project and artifact APIs:
+  - [x] create project
+  - [x] list projects
+  - [x] create artifact
+  - [x] get artifact
+- [x] Complete billing summary APIs
+- [x] Add provider management API client layer separate from UI components
+- [x] Add run API client layer separate from UI components
+- [x] Ensure the API and service-contract style is reusable for later SUBCKT utility endpoints and integrated run outputs
 
 ### Phase 8.5 guardrails
 
@@ -364,16 +365,16 @@ These are the recommended first implementation steps across the main open-provid
 
 ## Phase 9 — UI and local UX evolution
 
-- [ ] Treat this phase as UI consumption of already-defined APIs, not API invention
-- [ ] Add provider catalog UI grouped as Free / Premium / Your Keys / Custom Endpoints
-- [ ] Add provider capability badges
-- [ ] Add synthesis-eligible and judge-eligible indicators
-- [ ] Add BYOK management UI
-- [ ] Add custom endpoint add/edit/test/delete UI
-- [ ] Add per-run provider status cards
-- [ ] Add raw output, normalized findings, consensus, and synthesis views
-- [ ] Add run rerun/retry UX
-- [ ] Keep current local UI workflow working during migration
+- [x] Treat this phase as UI consumption of already-defined APIs, not API invention
+- [x] Add provider catalog UI grouped as Free / Premium / Your Keys / Custom Endpoints
+- [x] Add provider capability badges
+- [x] Add synthesis-eligible and judge-eligible indicators
+- [x] Add BYOK management UI
+- [x] Add custom endpoint add/edit/test/delete UI
+- [x] Add per-run provider status cards
+- [x] Add raw output, normalized findings, consensus, and synthesis views
+- [x] Add run rerun/retry UX
+- [x] Keep current local UI workflow working during migration
 
 ### Phase 9 guardrails
 

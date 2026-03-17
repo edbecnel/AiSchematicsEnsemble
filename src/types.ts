@@ -1,6 +1,39 @@
-export type ProviderName = "openai" | "xai" | "google" | "anthropic";
+export const BUILTIN_PROVIDER_NAMES = ["openai", "xai", "google", "anthropic"] as const;
 
-export type ProviderProtocol = "openai-compatible" | "anthropic-native" | "anthropic-compatible" | "gemini-native";
+export type BuiltinProviderName = (typeof BUILTIN_PROVIDER_NAMES)[number];
+
+/**
+ * Extensible provider identifier.
+ *
+ * Built-in providers remain strongly typed, while custom/provider-registry
+ * entries can introduce additional string IDs without forcing a type rewrite.
+ */
+export type ProviderName = BuiltinProviderName | (string & {});
+
+export const BUILTIN_PROVIDER_PROTOCOLS = [
+  "openai-compatible",
+  "anthropic-native",
+  "anthropic-compatible",
+  "gemini-native",
+] as const;
+
+export type BuiltinProviderProtocol = (typeof BUILTIN_PROVIDER_PROTOCOLS)[number];
+
+/**
+ * Extensible protocol identifier.
+ *
+ * Initial adapters cover the built-in protocols, while later phases can add
+ * protocol IDs for Azure, Bedrock, Ollama, custom gateways, and similar lanes.
+ */
+export type ProviderProtocol = BuiltinProviderProtocol | (string & {});
+
+export function isBuiltinProviderName(provider: string): provider is BuiltinProviderName {
+  return (BUILTIN_PROVIDER_NAMES as readonly string[]).includes(provider);
+}
+
+export function isBuiltinProviderProtocol(protocol: string): protocol is BuiltinProviderProtocol {
+  return (BUILTIN_PROVIDER_PROTOCOLS as readonly string[]).includes(protocol);
+}
 
 export type BillingMode = "platform_free" | "platform_paid" | "user_byok" | "custom_endpoint";
 
@@ -55,6 +88,8 @@ export interface ModelDefinition {
   modelId: string;
   displayName: string;
   capabilities: ProviderCapabilities;
+  synthesisEligible?: boolean;
+  judgeEligible?: boolean;
   pricing?: {
     inputPerMillionUsd?: number;
     outputPerMillionUsd?: number;
@@ -233,6 +268,90 @@ export interface SynthesisOutput {
   confidenceNotes: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Phase 8 — Synthesis, consensus, and judge pipeline
+// ---------------------------------------------------------------------------
+
+/** A NormalizedFinding attributed to a specific provider dispatch result. */
+export interface FindingWithSource extends NormalizedFinding {
+  /** Provider name from which this finding originated. */
+  sourceProvider: ProviderName;
+  /** Model ID from which this finding originated. */
+  sourceModel: string;
+  /** Parse quality of the source result (0–1). */
+  sourceParseQuality: number;
+}
+
+/** A cluster of findings from multiple providers that agree on a topic. */
+export interface ConsensusCluster {
+  /** Representative title derived from the cluster's highest-weight member. */
+  title: string;
+  /** Shared category when all members agree on one, otherwise undefined. */
+  category?: string;
+  /** Highest severity seen across all cluster members. */
+  maxSeverity?: NormalizedFinding["severity"];
+  /** All findings contributing to this cluster. */
+  members: FindingWithSource[];
+  /** Number of distinct providers that contributed findings to this cluster. */
+  providerCount: number;
+  /** Fraction of successful providers that contributed to this cluster (0–1). */
+  agreementScore: number;
+  /** True when only one provider contributed (i.e. this is an outlier finding). */
+  isOutlier: boolean;
+}
+
+/** Output of the consensus-clustering stage. */
+export interface ConsensusResult {
+  /** Clusters ordered by agreementScore descending, then maxSeverity descending. */
+  clusters: ConsensusCluster[];
+  /** Providers excluded from clustering because their parse quality was too low. */
+  excludedProviders: ProviderName[];
+  /** Human-readable summary of agreement across providers. */
+  agreementSummary: string;
+  /** Human-readable summary of disagreements and outliers between providers. */
+  disagreementSummary: string;
+  /**
+   * Overall ensemble confidence heuristic (0–1), derived from:
+   *  - average cluster agreement score (weight 0.6)
+   *  - average provider parse quality    (weight 0.4)
+   */
+  ensembleConfidence: number;
+}
+
+/** Output of the optional judge/reranker stage. */
+export interface JudgeOutput {
+  /** Reranked findings, highest priority first. */
+  prioritizedFindings: NormalizedFinding[];
+  /** Open questions no provider answered adequately. */
+  openQuestions: string[];
+  /** Confidence notes from the judge about overall analysis quality. */
+  confidenceNotes: string[];
+  /** Raw judge response text preserved for provenance. */
+  rawText: string;
+  /** Provider that acted as judge. */
+  judgeProvider: ProviderName;
+  /** Model that acted as judge. */
+  judgeModel: string;
+}
+
+/** Full output of the Phase 8 synthesis/consensus/judge pipeline. */
+export interface SynthesisPipelineResult {
+  /** Whether the pipeline was attempted (at least one successful result available). */
+  attempted: boolean;
+  /** Whether the pipeline produced at least a consensus result. */
+  succeeded: boolean;
+  /** Human-readable error if the pipeline failed entirely before producing consensus. */
+  error?: string;
+  /** Consensus clustering output. Present when attempted=true and no fatal error. */
+  consensus?: ConsensusResult;
+  /** Judge output. Present only when the judge step ran and succeeded. */
+  judge?: JudgeOutput;
+  /** Raw NormalizedProviderResult from the synthesis LLM call. */
+  synthesis?: NormalizedProviderResult;
+  /** Structured synthesis output when the synthesis text was parseable. */
+  synthesisOutput?: SynthesisOutput;
+}
+
 export interface ModelAnswer {
   provider: ProviderName;
   model: string;
@@ -252,7 +371,7 @@ export interface EnsembleOutputs {
 // ---------------------------------------------------------------------------
 
 /** The prompt-construction strategy used for a given dispatch. */
-export type PromptProfileId = "analysis" | "synthesis" | "structured-output";
+export type PromptProfileId = "analysis" | "synthesis" | "structured-output" | "judge";
 
 /**
  * Provider-agnostic metadata record for one artifact.

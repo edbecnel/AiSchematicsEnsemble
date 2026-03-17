@@ -23,9 +23,11 @@ import { createSubckt } from "./create.js";
 import { rewriteSubcktSyntax } from "./repair/syntaxRewriter.js";
 import { parsePinsFromSubcktHeader, reconcilePins } from "./repair/pinReconciler.js";
 import { buildChangeReport } from "./repair/changeReport.js";
+import type { ProviderName } from "../types.js";
 import type {
   SubcktLibRequest,
   SubcktLibResult,
+  SubcktProviderRoleConfig,
   SubcktRunStatus,
 } from "./types.js";
 import type { SyntaxRewriteResult } from "./repair/syntaxRewriter.js";
@@ -63,9 +65,11 @@ export interface RefineSubcktInput {
   /** Root directory for SUBCKT run output folders.  Defaults to "subckt_runs". */
   outdir?: string;
   /** Provider for re-synthesis.  Defaults to "anthropic". */
-  provider?: "openai" | "xai" | "google" | "anthropic";
+  provider?: ProviderName;
   /** Model override for re-synthesis. */
   model?: string;
+  /** Shared role-based provider/model overrides reused from main run config. */
+  providerRoles?: SubcktProviderRoleConfig;
   /** Run ngspice smoke test when available.  Defaults to true. */
   runSmokeTest?: boolean;
   /** Optional logger. */
@@ -260,6 +264,7 @@ export async function refineSubckt(input: RefineSubcktInput): Promise<RefineSubc
   const createOutput = await createSubckt({
     ...request,
     outdir: input.outdir,
+    providerRoles: input.providerRoles,
     synthesisProvider: input.provider,
     synthesisModel: input.model,
     extractionProvider: input.provider,
