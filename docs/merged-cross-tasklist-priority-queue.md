@@ -24,7 +24,7 @@ This document merges the next-priority work across the three active planning doc
 - [x] 5. Open provider — finish storage abstraction cleanup
 - [x] 6. SUBCKT utility — add testbench verification notes
 - [x] 7. SUBCKT utility — reuse BYOK and custom-endpoint handling
-- [ ] 8. SUBCKT utility — reuse server-side policy enforcement
+- [x] 8. SUBCKT utility — reuse server-side policy enforcement
 - [ ] 9. Open provider — start BYOK and credential security phase
 - [ ] 10. SUBCKT utility — start local UI phase
 - [ ] 11. Interactive refinement — approve the architecture
@@ -129,7 +129,7 @@ This document merges the next-priority work across the three active planning doc
 
 - The SUBCKT utility should track the main provider architecture rather than drift from it.
 
-### [ ] 8. SUBCKT utility — reuse server-side policy enforcement
+### [x] 8. SUBCKT utility — reuse server-side policy enforcement
 
 **Task**
 

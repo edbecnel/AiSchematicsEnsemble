@@ -224,6 +224,16 @@ export interface SubcktProviderTarget {
   model?: string;
 }
 
+export interface SubcktProviderAccessRequest {
+  role: SubcktProviderRole;
+  provider: ProviderName;
+  model?: string;
+}
+
+export type SubcktProviderAccessGuard = (
+  request: SubcktProviderAccessRequest,
+) => void | Promise<void>;
+
 /**
  * Per-role provider/model overrides.
  * Any role that is not specified falls back to the run-level defaults.

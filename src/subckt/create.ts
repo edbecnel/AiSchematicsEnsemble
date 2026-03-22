@@ -23,6 +23,7 @@ import type { ProviderName } from "../types.js";
 import type {
   SubcktLibRequest,
   SubcktLibResult,
+  SubcktProviderAccessGuard,
   SubcktProviderRoleConfig,
   SubcktProviderTarget,
   SubcktRunRecord,
@@ -49,6 +50,8 @@ export interface CreateSubcktInput extends SubcktLibRequest {
   synthesisModel?: string;
   /** Shared role-based provider/model overrides reused from main run config. */
   providerRoles?: SubcktProviderRoleConfig;
+  /** Optional server-owned access guard for hosted policy enforcement. */
+  assertProviderAccess?: SubcktProviderAccessGuard;
   /** Run ngspice smoke test when available. Defaults to true. */
   runSmokeTest?: boolean;
   /** Optional logger. */
@@ -59,10 +62,19 @@ function resolveProviderTarget(
   explicitProvider: ProviderName | undefined,
   explicitModel: string | undefined,
   roleTarget: SubcktProviderTarget | undefined,
-): SubcktProviderTarget | undefined {
-  const provider = roleTarget?.provider ?? explicitProvider;
+): SubcktProviderTarget {
+  const provider = roleTarget?.provider ?? explicitProvider ?? "anthropic";
   const model = roleTarget?.model ?? explicitModel;
-  return provider || model ? { provider: provider ?? "anthropic", model } : undefined;
+  return model ? { provider, model } : { provider };
+}
+
+async function enforceProviderAccess(
+  guard: SubcktProviderAccessGuard | undefined,
+  role: "fact_extraction" | "model_synthesis",
+  target: SubcktProviderTarget,
+): Promise<void> {
+  if (!guard) return;
+  await guard({ role, provider: target.provider, model: target.model });
 }
 
 export interface CreateSubcktOutput {
@@ -269,6 +281,9 @@ export async function createSubckt(input: CreateSubcktInput): Promise<CreateSubc
   );
 
   try {
+    await enforceProviderAccess(input.assertProviderAccess, "fact_extraction", extractionTarget);
+    await enforceProviderAccess(input.assertProviderAccess, "model_synthesis", synthesisTarget);
+
     // --- Phase C: Artifact ingestion ---
     log("\n[1/4] Ingesting artifacts...");
     const ingestResult = await ingestArtifacts({ request, artifactDir, log });

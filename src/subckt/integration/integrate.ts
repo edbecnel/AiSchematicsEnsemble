@@ -27,6 +27,7 @@ import type {
   SubcktIntegrationResult,
   SubcktIntegrationArtifact,
   SubcktComponentSpec,
+  SubcktProviderAccessGuard,
 } from "../types.js";
 
 // ---------------------------------------------------------------------------
@@ -43,6 +44,8 @@ export interface RunSubcktIntegrationArgs {
    * Used when patchFinalCir is true to produce an updated .cir with .include lines.
    */
   finalCirText: string;
+  /** Optional server-owned access guard for hosted policy enforcement. */
+  assertProviderAccess?: SubcktProviderAccessGuard;
   /** Optional logger. */
   log?: (msg: string) => void;
 }
@@ -119,6 +122,7 @@ export async function runSubcktIntegration(
         outdir: subcktRunsDir,
         runSmokeTest: true,
         providerRoles: config.providerRoles,
+        assertProviderAccess: args.assertProviderAccess,
         log,
       });
 

@@ -168,7 +168,7 @@ This checklist tracks implementation of the separate SUBCKT library utility.
 - [x] Route SUBCKT utility provider calls through the same registry + adapter + policy path as the main platform
 - [x] Reuse canonical artifact and prompt message structures where practical
 - [x] Reuse credential/BYOK/custom-endpoint handling where practical
-- [ ] Reuse server-side policy enforcement for hosted execution
+- [x] Reuse server-side policy enforcement for hosted execution
 - [x] Define provider roles for:
   - [x] fact extraction
   - [x] model synthesis

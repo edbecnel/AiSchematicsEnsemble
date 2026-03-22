@@ -24,6 +24,8 @@ export type {
   ValidationStatus,
   // Phase H
   SubcktProviderRole,
+  SubcktProviderAccessGuard,
+  SubcktProviderAccessRequest,
   SubcktProviderRoleConfig,
 } from "./types.js";
 

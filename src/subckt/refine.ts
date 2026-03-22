@@ -27,6 +27,7 @@ import type { ProviderName } from "../types.js";
 import type {
   SubcktLibRequest,
   SubcktLibResult,
+  SubcktProviderAccessGuard,
   SubcktProviderRoleConfig,
   SubcktRunStatus,
 } from "./types.js";
@@ -70,6 +71,8 @@ export interface RefineSubcktInput {
   model?: string;
   /** Shared role-based provider/model overrides reused from main run config. */
   providerRoles?: SubcktProviderRoleConfig;
+  /** Optional server-owned access guard for hosted policy enforcement. */
+  assertProviderAccess?: SubcktProviderAccessGuard;
   /** Run ngspice smoke test when available.  Defaults to true. */
   runSmokeTest?: boolean;
   /** Optional logger. */
@@ -265,6 +268,7 @@ export async function refineSubckt(input: RefineSubcktInput): Promise<RefineSubc
     ...request,
     outdir: input.outdir,
     providerRoles: input.providerRoles,
+    assertProviderAccess: input.assertProviderAccess,
     synthesisProvider: input.provider,
     synthesisModel: input.model,
     extractionProvider: input.provider,
