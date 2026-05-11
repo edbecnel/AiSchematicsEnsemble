@@ -1,4 +1,5 @@
 import type { ModelAnswer, EnsembleOutputs } from "./types.js";
+import { MARKDOWN_FORMATTING_POLICY } from "./core/prompts/profiles.js";
 
 const TAG_MD_OPEN = "<final_markdown>";
 const TAG_MD_CLOSE = "</final_markdown>";
@@ -49,6 +50,8 @@ export function buildEnsemblePrompt(args: {
   return `You are an expert electrical engineer + experimentalist.
 Your job is to ensemble multiple AI outputs into a single careful recommendation.
   We are working on arbitrary electrical circuits/schematics; focus on testable advice.
+
+${MARKDOWN_FORMATTING_POLICY}
 
 QUESTION:
 ${args.question.trim()}

@@ -64,6 +64,25 @@ const TAG_SPICE_CLOSE = "</spice_netlist>";
 const TAG_JSON_OPEN = "<circuit_json>";
 const TAG_JSON_CLOSE = "</circuit_json>";
 
+// ---------------------------------------------------------------------------
+// Built-in Markdown formatting policy — injected automatically before QUESTION
+// ---------------------------------------------------------------------------
+
+export const MARKDOWN_FORMATTING_POLICY = `\
+MARKDOWN FORMATTING POLICY (applies to the final_markdown output):
+- The question below is structured Markdown, not plain text — preserve its structure.
+- The final report must be valid GitHub-flavored Markdown.
+- Headings must remain headings (do not convert them to plain text).
+- Bullet lists must remain bullet lists.
+- Numbered lists must remain numbered lists.
+- Markdown tables must remain Markdown tables.
+- Code, SPICE netlists, KiCad netlists, library models, terminal output, and file excerpts must remain inside fenced code blocks.
+- Do not flatten Markdown structure into plain paragraphs.
+- Do not escape Markdown characters (#, -, *, \`, |) outside of code blocks.
+- Do not wrap the entire report in one large code block.
+- Do not convert Markdown to HTML.
+- Output raw Markdown suitable for saving directly as final.md.`.trim();
+
 const OUTPUT_FORMAT_BLOCK = `
 OUTPUT FORMAT (MUST match exactly):
 ${TAG_MD_OPEN}
@@ -178,6 +197,8 @@ const synthesisProfile: PromptProfile = {
     const userContent = `You are an expert electrical engineer and experimentalist.
 Your job is to ensemble multiple AI analysis outputs into a single careful recommendation.
 We are working on arbitrary electrical circuits/schematics — focus on testable advice.
+
+${MARKDOWN_FORMATTING_POLICY}
 
 QUESTION:
 ${context.userInstructions.trim()}
