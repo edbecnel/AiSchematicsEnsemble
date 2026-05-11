@@ -580,7 +580,10 @@ export async function runBatch(opts: RunBatchOptions, logger: RunBatchLogger = d
     ? out.finalMarkdown
     : "# Ensemble output\n\n(Ensemble did not provide <final_markdown>; see ensemble_raw.txt.)\n";
 
+  const questionHeader = `## Question\n\n${question.trim()}\n\n---\n\n`;
+
   const finalMdText =
+    questionHeader +
     finalMarkdownBest +
     (missingSpice
       ? "\n> WARNING: Missing SPICE netlist block; see ensemble_raw.txt.\n"

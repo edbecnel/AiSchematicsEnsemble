@@ -215,7 +215,7 @@ export async function writeReportDocx(args: {
           ...baselineSection,
           ...referenceSection,
           new Paragraph({ text: "Question", heading: HeadingLevel.HEADING_1 }),
-          new Paragraph(args.question),
+          ...markdownToDocxParagraphs(args.question, { headingDemotion: 1, maxHeadingLevel: 6 }),
           new Paragraph({ text: "Ensembled Output (Markdown)", heading: HeadingLevel.HEADING_1 }),
           ...markdownToDocxParagraphs(args.finalMarkdown, {
             // Keep the report structure stable; demote any headings inside the markdown.

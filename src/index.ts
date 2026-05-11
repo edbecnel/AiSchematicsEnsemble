@@ -695,7 +695,8 @@ program
           const turnN = String(turns.length + 1).padStart(3, "0");
           const turnDir = path.join(dir, "turns", `turn_${turnN}`);
           await fs.mkdirp(turnDir);
-          await writeText(path.join(turnDir, "final.md"), out.finalMarkdown);
+          const questionHeader = `## Question\n\n${prompt.trim()}\n\n---\n\n`;
+          await writeText(path.join(turnDir, "final.md"), questionHeader + out.finalMarkdown);
 
           const finalCirText = missingSpice
             ? [
