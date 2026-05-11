@@ -44,7 +44,7 @@ const JUDGE_PREFERENCE: ProviderName[] = ["anthropic", "openai"];
  *  2. have a configured API key in the current environment
  */
 export function filterSynthesisEligible(available: ProviderName[]): ProviderName[] {
-  const eligible = new Set(getSynthesisEligibleProviders());
+  const eligible = new Set<string>(getSynthesisEligibleProviders());
   return available.filter((p) => eligible.has(p) && providerHasConfiguredEnvKey(p));
 }
 
@@ -54,7 +54,7 @@ export function filterSynthesisEligible(available: ProviderName[]): ProviderName
  *  2. have a configured API key in the current environment
  */
 export function filterJudgeEligible(available: ProviderName[]): ProviderName[] {
-  const eligible = new Set(getJudgeEligibleProviders());
+  const eligible = new Set<string>(getJudgeEligibleProviders());
   return available.filter((p) => eligible.has(p) && providerHasConfiguredEnvKey(p));
 }
 
