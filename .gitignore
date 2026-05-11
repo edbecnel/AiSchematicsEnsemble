@@ -5,6 +5,7 @@ runs*/
 .env
 !.env.example
 .DS_Store
+How to convert PDF to PNG.md
 
 # Locally downloaded/generated configs (keep ai-schematics.config.example.json tracked)
 ai-schematics.config.*.json
